@@ -1,0 +1,24 @@
+#
+# Copyright (C) 2015 Google, Inc
+#
+# SPDX-License-Identifier:	GPL-2.0+
+#
+
+config INTEL_BAYTRAIL
+	bool
+	select HAVE_FSP if !EFI
+
+if INTEL_BAYTRAIL
+config INTERNAL_UART
+	bool "Enable the SoC integrated legacy UART"
+	help
+	  There is a legacy UART integrated into the Bay Trail SoC.
+	  A maximum baud rate of 115200 bps is supported. For this
+	  reason, it is recommended that the UART port be used for
+	  debug purposes only, eg: U-Boot console.
+
+config DEBUG_UART
+	bool
+	select DEBUG_UART_BOARD_INIT
+
+endif

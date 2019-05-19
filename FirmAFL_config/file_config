@@ -1,0 +1,10 @@
+9054 10566
+mkdir var/run
+10853
+mkdir var/run
+mkdir var/etc
+9925
+mkdir /var/proc/web/session:1/
+12978 for network.cgi
+/var/config/net.conf
+mkdir /var/tmp

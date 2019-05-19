@@ -1,0 +1,12 @@
+#! /bin/sh
+
+run_binary "./gard"
+if [ "$?" -ne 1 ] ; then
+	fail_test
+fi
+
+strip_version_from_result "gard"
+
+diff_with_result
+
+pass_test

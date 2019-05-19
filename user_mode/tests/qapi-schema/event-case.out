@@ -1,0 +1,5 @@
+enum QType ['none', 'qnull', 'qnum', 'qstring', 'qdict', 'qlist', 'qbool']
+    prefix QTYPE
+event oops None
+   boxed=False
+object q_empty

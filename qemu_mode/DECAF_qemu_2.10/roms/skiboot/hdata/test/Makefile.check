@@ -1,0 +1,51 @@
+# -*-Makefile-*-
+
+HDATA_TEST := hdata/test/hdata_to_dt
+
+.PHONY : hdata-check hdata-coverage
+hdata-check: $(HDATA_TEST:%=%-check)
+hdata-coverage: $(HDATA_TEST:%=%-gcov-run)
+
+check: hdata-check hdata-coverage
+coverage: hdata-coverage
+
+LCOV_EXCLUDE += $(HDATA_TEST:%=%.c) hdata/test/stubs.c
+LCOV_EXCLUDE += /usr/include/valgrind/memcheck.h
+
+hdata/test/hdata_to_dt-check: hdata/test/hdata_to_dt-check-q hdata/test/hdata_to_dt-check-dt
+
+# Add some test ntuples for open source version...
+hdata/test/hdata_to_dt-check-q: hdata/test/hdata_to_dt
+	$(call Q, TEST , $(VALGRIND) hdata/test/hdata_to_dt -q hdata/test/p81-811.spira hdata/test/p81-811.spira.heap, $<)
+	$(call Q, TEST , $(VALGRIND) hdata/test/hdata_to_dt -s -q hdata/test/p8-840-spira.spirah hdata/test/p8-840-spira.spiras, $<)
+
+hdata/test/hdata_to_dt-check-dt: hdata/test/hdata_to_dt
+	$(call Q, TEST , $(VALGRIND) hdata/test/hdata_to_dt hdata/test/p81-811.spira hdata/test/p81-811.spira.heap |diff -u hdata/test/p81-811.spira.dt -, $< device-tree)
+	$(call Q, TEST , $(VALGRIND) hdata/test/hdata_to_dt -s hdata/test/p8-840-spira.spirah hdata/test/p8-840-spira.spiras |diff -u hdata/test/p8-840-spira.dt -, $< device-tree)
+
+hdata/test/hdata_to_dt-gcov-run: hdata/test/hdata_to_dt-check-dt-gcov-run
+
+hdata/test/hdata_to_dt-check-dt-gcov-run: hdata/test/hdata_to_dt-gcov
+	$(call Q, TEST-COVERAGE , ./hdata/test/hdata_to_dt-gcov hdata/test/p81-811.spira hdata/test/p81-811.spira.heap |diff -u hdata/test/p81-811.spira.dt -, $< device-tree)
+	$(call Q, TEST-COVERAGE , ./hdata/test/hdata_to_dt-gcov -s hdata/test/p8-840-spira.spirah hdata/test/p8-840-spira.spiras |diff -u hdata/test/p8-840-spira.dt -, $< device-tree)
+
+hdata/test/stubs.o: hdata/test/stubs.c
+	$(call Q, HOSTCC , $(HOSTCC) $(HOSTCFLAGS) -g -c -o $@ $<, $<)
+
+$(HDATA_TEST) : hdata/test/stubs.o
+
+$(CORE_TEST:%=%-gcov): hdata/test/stubs.o
+
+$(HDATA_TEST) : % : %.c
+	$(call Q, HOSTCC , $(HOSTCC) $(HOSTCFLAGS) -DTEST -O0 -g -I hdata -I include -I . -I libfdt -o $@ $< hdata/test/stubs.o, $<)
+
+$(HDATA_TEST:%=%-gcov): %-gcov : %.c %
+	$(call Q, HOSTCC ,$(HOSTCC) $(HOSTCFLAGS) -fprofile-arcs -ftest-coverage -DTEST -O0 -g -I include -I . -I data -I libfdt -lgcov -o $@ $< hdata/test/stubs.o, $<)
+
+-include $(wildcard hdata/test/*.d)
+
+clean: hdata-test-clean
+
+hdata-test-clean:
+	$(RM) hdata/test/*.[od] hdata/test/hdata_to_dt
+	$(RM) $(HDATA_TEST) $(HDATA_TEST:%=%-gcov)

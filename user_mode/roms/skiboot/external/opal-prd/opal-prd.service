@@ -1,0 +1,10 @@
+[Unit]
+Description=OPAL PRD daemon
+Requires=opal-prd.socket
+
+[Service]
+StandardInput=socket
+ExecStart=/usr/sbin/opal-prd --pnor /dev/mtd0
+
+[Install]
+WantedBy=multi-user.target

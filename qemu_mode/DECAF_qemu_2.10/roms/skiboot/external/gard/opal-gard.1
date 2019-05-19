@@ -1,0 +1,30 @@
+.TH opal-gard 1 "19 June 2015"
+.SH NAME
+opal-gard \- GUARD Partition manipulation tool for OpenPower hardware
+.SH SYNOPSIS
+\fBopal-gard\fP [ \-e | \-f \fIfile\fP | \-p ]
+\fIcommand\fP
+.SH DESCRIPTION
+\fBopal-gard\fP allows reading of the GUARD partition on OpenPower hardware though the exposed mtd flash interface. The actual device (usually \fB/dev/mtd0\fR) is automatically detected.
+.SS Options
+\fB\-e, \-\-ecc\fP
+Force reading/writing with ECC bytes.
+.TP
+\fB\-f, \-\-file\fP \fIfile\fR
+Don't search for the \fB/dev/mtd\fR device, use \fIfile\fP instead.
+.TP
+.TP
+\fB\-p, \-\-part\fP
+Used in conjunction with \-f to specify that just the GUARD partition is in the \fIfile\fR and that libffs shouldn't be used.
+.SS Commands
+\fIcommand\fP
+may be one of the following
+.TP
+\fBlist\fP
+List current GARD records
+.TP
+\fBshow\fP
+Show details of a GARD record
+.TP
+\fBclear\fP
+Clear GARD records

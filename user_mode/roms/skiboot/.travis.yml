@@ -1,0 +1,48 @@
+language: c
+
+sudo: required
+dist: trusty
+
+before_install:
+    - echo -n | openssl s_client -connect scan.coverity.com:443 | sed -ne '/-BEGIN CERTIFICATE-/,/-END CERTIFICATE-/p' | sudo tee -a /etc/ssl/certs/ca-certificates.crt
+    - sudo add-apt-repository -y ppa:ubuntu-toolchain-r/test
+    - sudo apt-get update -qq
+    - sudo apt-get install -y gcc-4.8 libstdc++6 valgrind expect xterm
+    - sudo apt-get install -y gcc-arm-linux-gnueabi gcc-powerpc64le-linux-gnu gcc
+    - sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-4.8 50
+    - wget https://www.kernel.org/pub/tools/crosstool/files/bin/x86_64/4.8.0/x86_64-gcc-4.8.0-nolibc_powerpc64-linux.tar.xz
+    - sudo mkdir /opt/cross
+    - sudo tar -C /opt/cross -xvf x86_64-gcc-4.8.0-nolibc_powerpc64-linux.tar.xz
+    - wget ftp://public.dhe.ibm.com/software/server/powerfuncsim/p8/packages/v1.0-2/systemsim-p8_1.0-2_amd64.deb
+    - sudo dpkg -i systemsim-p8_1.0-2_amd64.deb
+    - ./opal-ci/install-deps-qemu-powernv.sh
+
+env:
+    global:
+        - CROSS=/opt/cross/gcc-4.8.0-nolibc/powerpc64-linux/bin/powerpc64-linux-
+        - HOSTCC=gcc-4.8
+        # The next declaration is the encrypted COVERITY_SCAN_TOKEN, created
+        #   via the "travis encrypt" command using the project repo's public key
+        - secure: "MpNEGFa1VrF/vsQq24n5UgfRbz1wVC6B8mubFnyK4gX0IuQ9xhWuTzMLUQF9UJxe5jnC2DTmVUvYTYN/hggw+PpYwbOOAE0QGR5pmPHA4PSRmc5pxt1q18/sv7EPFw66GFyWJq94nWjpigyKQ8KGtA67j1xFqrDoS43OA76WZgo="
+
+
+script:
+  - if [ ${COVERITY_SCAN_BRANCH} != 1 ]; then
+      (cd opal-ci; ./build-qemu-powernv.sh) &&
+      ./opal-ci/fetch-debian-jessie-installer.sh &&
+      make -j4 all check ; (make clean; cd external/gard && CROSS= make) &&
+      (cd external/pflash; ./build-all-arch.sh) &&
+      make clean && SKIBOOT_GCOV=1 make && SKIBOOT_GCOV=1 make check &&
+      make clean && rm -rf builddir && mkdir builddir && make SRC=`pwd` -f ../Makefile -C builddir &&
+      make clean;
+    fi
+
+addons:
+  coverity_scan:
+    project:
+      name: "open-power/skiboot"
+      description: "Build submitted via Travis CI"
+    notification_email: stewart@linux.vnet.ibm.com
+    build_command_prepend: "cov-configure --comptype gcc --compiler powerpc64-linux-gcc --template; cov-configure --comptype gcc --compiler powerpc64le-linux-gnu-gcc; cov-configure --comptype gcc --compiler arm-linux-gnueabi-gcc; cov-configure --comptype gcc --compiler x86_64-linux-gnu-gcc"
+    build_command: "make -j4 all check"
+    branch_pattern: coverity_scan

@@ -1,0 +1,37 @@
+# -*-Makefile-*-
+LIBFLASH_TEST := libflash/test/test-flash libflash/test/test-ecc libflash/test/test-blocklevel
+
+LCOV_EXCLUDE += $(LIBFLASH_TEST:%=%.c)
+
+.PHONY : libflash-check libc-coverage
+libflash-check: $(LIBFLASH_TEST:%=%-check) $(CORE_TEST:%=%-gcov-run)
+libflash-coverage: $(LIBFLASH_TEST:%=%-gcov-run)
+
+check: libflash-check libc-coverage
+coverage: libflash-coverage
+
+$(LIBFLASH_TEST:%=%-gcov-run) : %-run: %
+	$(call QTEST, TEST-COVERAGE ,$< , $<)
+
+$(LIBFLASH_TEST:%=%-check) : %-check: %
+	$(call QTEST, RUN-TEST ,$(VALGRIND) $<, $<)
+
+libflash/test/stubs.o: libflash/test/stubs.c
+	$(call Q, HOSTCC ,$(HOSTCC) $(HOSTCFLAGS) -g -c -o $@ $<, $<)
+
+$(LIBFLASH_TEST) : libflash/test/stubs.o libflash/libflash.c libflash/ecc.c libflash/blocklevel.c
+
+$(LIBFLASH_TEST) : % : %.c
+	$(call Q, HOSTCC ,$(HOSTCC) $(HOSTCFLAGS) -O0 -g -I include -I . -o $@ $< libflash/test/stubs.o, $<)
+
+$(LIBFLASH_TEST:%=%-gcov): %-gcov : %.c %
+	$(call Q, HOSTCC ,$(HOSTCC) $(HOSTCFLAGS) -fprofile-arcs -ftest-coverage -lgcov -O0 -g -I include -I . -o $@ $< libflash/test/stubs.o, $<)
+
+-include $(wildcard libflash/test/*.d)
+
+clean: libflash-test-clean
+
+libflash-test-clean:
+	$(RM) libflash/test/*.o $(LIBFLASH_TEST)
+	$(RM) libflash/test/*.d
+	$(RM) libflash/test/*-gcov

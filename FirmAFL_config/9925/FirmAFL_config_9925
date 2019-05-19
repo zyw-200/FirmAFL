@@ -1,0 +1,7 @@
+mapping_filename=../image_9925/mapping_table
+init_read_pipename=../image_9925/user_cpu_state
+write_pipename=../image_9925/full_cpu_state
+program_analysis=httpd
+feed_type=FEED_HTTP
+id=9925
+opti=yes

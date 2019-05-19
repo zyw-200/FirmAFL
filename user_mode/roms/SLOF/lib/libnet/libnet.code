@@ -1,0 +1,20 @@
+
+#include <netapps.h>
+
+PRIM(NET_X2d_LOAD)
+	int alen = TOS.n; POP;
+	char *arg = TOS.a; POP;
+	int blocksize = TOS.n; POP;
+	int hugeload = TOS.n; POP;
+	void *replybuf = TOS.a; POP;
+	long maxlen = TOS.n; POP;
+	void *loadaddr = TOS.a;
+	TOS.n = netload(loadaddr, maxlen, replybuf, hugeload, blocksize,
+			arg, alen);
+MIRP
+
+PRIM(NET_X2d_PING)
+	int alen = TOS.n; POP;
+	char *arg = TOS.a;
+	TOS.n = ping(arg, alen);
+MIRP

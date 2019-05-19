@@ -1,0 +1,10 @@
+mapping_filename=../image_9054/mapping_table
+init_read_pipename=../image_9054/user_cpu_state
+write_pipename=../image_9054/full_cpu_state
+start_fork_pc=0x402d80
+program_analysis=hnap
+lib_name=libuClibc-0.9.30.3.so
+environ_offset=0x74e60
+feed_type=FEED_ENV
+id=9054
+opti=yes

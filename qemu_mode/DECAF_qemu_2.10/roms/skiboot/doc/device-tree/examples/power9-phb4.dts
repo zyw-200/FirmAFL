@@ -1,0 +1,192 @@
+/dts-v1/;
+
+/ {
+	compatible = "ibm,powernv";
+	model = "BML";
+	#size-cells = <0x2>;
+	#address-cells = <0x2>;
+
+	chosen {
+		linux,pci-assign-all-buses = <0x1>;
+		linux,pci-probe-only = <0x0>;
+		linux,platform = <0x100>;
+		ibm,architecture-vec-5 = <0x0 0x800000>;
+		linux,initrd-start = <0x0 0x28000000>;
+		linux,initrd-end = <0x0 0x30000000>;
+	};
+
+	memory@0 {
+		reg = <0x0 0x0 0x0 0x80000000>;
+		ibm,chip-id = <0x0>;
+		device_type = "memory";
+	};
+
+	cpus {
+		#size-cells = <0x0>;
+		#address-cells = <0x1>;
+
+		PowerPC,POWER9@0 {
+			device_type = "cpu";
+			status = "okay";
+			ibm,chip-id = <0x0>;
+			ibm,pir = <0x0>;
+			timebase-frequency = <0x1c4fecc0>;
+			clock-frequency = <0xe27f6600>;
+			ibm,segment-page-sizes = <0xc 0x0 0x1 0xc 0x0 0x10 0x110 0x1 0x10 0x1 0x14 0x111 0x1 0x14 0x2 0x18 0x100 0x1 0x18 0x0 0x22 0x120 0x1 0x22 0x3>;
+			ibm,processor-segment-sizes = <0x1c 0xffffffff 0xffffffff 0xffffffff>;
+			ibm,pa-features = <0x600f63f 0xc70080c0>;
+			i-cache-size = <0x8000>;
+			d-cache-size = <0x8000>;
+			i-cache-line-size = <0x80>;
+			d-cache-line-size = <0x80>;
+			ibm,slb-size = <0x20>;
+			ibm,vmx = <0x2>;
+			reg = <0x0>;
+//			ibm,ppc-interrupt-server#s = <0x0 0x01>;
+			ibm,ppc-interrupt-server#s = <0x0>;
+		};
+	};
+
+	xscom@603fc00000000 {
+		compatible = "ibm,xscom", "ibm,power9-xscom";
+		ibm,chip-id = <0x0>;
+		#size-cells = <0x1>;
+		#address-cells = <0x1>;
+		reg = <0x603fc 0x0 0x8 0x0>;
+
+
+		/* PE#0 supports only one stack */
+		pbcq@4010c00 {
+			ibm,pec-index = <0x0>;
+			reg = <0x4010c00 0x100 0xd010800 0x200>;
+			compatible = "ibm,power9-pbcq";
+
+			/* child address is stack number */
+			#address-cells = <1>;
+			#size-cells = <0>;
+			stack@0 {
+			      /* Stack number */
+			      reg = <0>;
+			      /* Chip-scope PHB index */
+			      ibm,phb-index = <0x0>;
+			      compatible = "ibm,power9-phb-stack";
+			      /* ibm,lane-eq = < ????? >; */
+			      status = "okay";
+			};
+		};
+		/* PE#1 supports two stacks */
+
+		pbcq@4011000 {
+			ibm,pec-index = <0x1>;
+			reg = <0x4011000 0x100 0xe010800 0x200>;
+			compatible = "ibm,power9-pbcq";
+
+			/* child address is stack number */
+			#address-cells = <1>;
+			#size-cells = <0>;
+			stack@0 {
+			      /* Stack number */
+			      reg = <0>;
+			      /* Chip-scope PHB index */
+			      ibm,phb-index = <0x1>;
+			      compatible = "ibm,power9-phb-stack";
+			      /* ibm,lane-eq = < ????? >; */
+			      status = "okay";
+			};
+			stack@1 {
+			      /* Stack number */
+			      reg = <1>;
+			      /* Chip-scope PHB index */
+			      ibm,phb-index = <0x2>;
+			      compatible = "ibm,power9-phb-stack";
+			      /* ibm,lane-eq = < ????? >; */
+			      status = "okay";
+			};
+		};
+
+		/* PE#2 supports three stacks */
+		pbcq@4011400 {
+			ibm,pec-index = <0x2>;
+			reg = <0x4011400 0x100 0xf010800 0x200>;
+			compatible = "ibm,power9-pbcq";
+
+			/* child address is stack number */
+			#address-cells = <1>;
+			#size-cells = <0>;
+			stack@0 {
+			      /* Stack number */
+			      reg = <0>;
+			      /* Chip-scope PHB index */
+			      ibm,phb-index = <0x3>;
+			      compatible = "ibm,power9-phb-stack";
+			      /* ibm,lane-eq = < ????? >; */
+			      status = "disabled";
+			};
+			stack@1 {
+			      /* Stack number */
+			      reg = <1>;
+			      /* Chip-scope PHB index */
+			      ibm,phb-index = <0x4>;
+			      compatible = "ibm,power9-phb-stack";
+			      /* ibm,lane-eq = < ????? >; */
+			      status = "disabled";
+			};
+			stack@2 {
+			      /* Stack number */
+			      reg = <2>;
+			      /* Chip-scope PHB index */
+			      ibm,phb-index = <0x5>;
+			      compatible = "ibm,power9-phb-stack";
+			      /* ibm,lane-eq = < ????? >; */
+			      status = "disabled";
+			};
+		};
+
+		chiptod@40000 {
+			primary;
+			reg = <0x40000 0x34>;
+			compatible = "ibm,power-chiptod", "ibm,power9-chiptod";
+		};
+
+		xive@5013400 {
+			reg = <0x5013000 0x300>;
+			compatible = "ibm,power9-xive-x";
+		};
+	};
+
+	lpcm-opb@6030000000000 {
+		#address-cells = <1>;
+		#size-cells = <1>;
+		compatible = "ibm,power9-lpcm-opb", "simple-bus";
+		ibm,chip-id = <0x0>;
+		ranges = < 0x00000000 0x60300 0x00000000 0x80000000
+		           0x80000000 0x60300 0x80000000 0x80000000 >;
+		opb-master@c0010000 {
+		    compatible = "ibm,power9-lpcm-opb-master";
+		    reg = < 0xc0010000 0x60 >;
+		};
+		opb-arbiter@c0011000 {
+		    compatible = "ibm,power9-lpcm-opb-arbiter";
+		    reg = < 0xc0011000 0x8 >;
+		};
+		lpc-controller@c0012000 {
+		    compatible = "ibm,power9-lpc-controller";
+		    reg = < 0xc0012000 0x100 >;
+		};
+		lpc@f0000000 {
+		    compatible = "ibm,power9-lpc";
+		    #address-cells = <2>;
+		    #size-cells = <1>;
+		    ranges = < 3 0 0xf0000000 0x10000000 /* FW space */
+		               0 0 0xe0000000 0x10000000 /* MEM space */
+		               1 0 0xd0010000 0x00010000 /* IO space */ >;
+		    serial@i3f8 {
+		        compatible = "ns16550";
+		        reg = < 1 0x3f8 0x10 >;
+			current-speed = < 115200 >;
+			clock-frequency = < 1843200 >;
+		    };
+		};
+	};
+
+};

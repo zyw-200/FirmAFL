@@ -1,0 +1,7 @@
+mapping_filename=../image_10853/mapping_table
+init_read_pipename=../image_10853/user_cpu_state
+write_pipename=../image_10853/full_cpu_state
+program_analysis=httpd
+feed_type=FEED_HTTP
+id=10853
+opti=yes

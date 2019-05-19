@@ -1,0 +1,53 @@
+include/qom/object.h
+typename
+class
+
+include/qemu/bitmap.h
+include/exec/memory.h
+new ->class
+
+
+qom/object.c
+->class
+
+include/hw/qdev-core.h
+typename
+
+/include/qom/cpu.h
+typename vaddr
+
+
+
+include/qemu/osdep.h
+typeof 
+
+include/exec/exec-all.h
+//assert
+
+include/exec/cpu-all.h
+TARGET_PAGE_BITS 13
+
+qapi-types.h
+export
+
+qapi-visit.c
+->export
+
+exec.c
+->vaddr
+
+default_mon - > cur_mon
+cpu_single_env -> current_cpu
+
+monitor_printf
+
+comment out
+DECAF_tb_find_slow
+DECAF_flushTranslationPage_env DECAF_flushTranslationBlock_env
+DECAF_flushTranslationPage DECAF_flushTranslationBlock
+DECAF_perform_flush
+
+DECAF_bdrv_open
+DECAF_virtdev_init
+register_savevm
+

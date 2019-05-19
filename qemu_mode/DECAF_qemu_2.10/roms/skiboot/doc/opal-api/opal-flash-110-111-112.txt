@@ -1,0 +1,72 @@
+
+OPAL Flash calls
+----------------
+
+There are three OPAL calls for interacting with flash devices:
+
+ #define OPAL_FLASH_READ	110
+ #define OPAL_FLASH_WRITE	111
+ #define OPAL_FLASH_ERASE	112
+
+Multiple flash devices are supported by OPAL - each of these calls takes an id
+parameter, which much match an ID found in the corresponding ibm,opal/flash@n
+device tree node. See doc/device-tree/ibm,opal/flash.txt for details of
+the device tree bindings.
+
+All operations on the flash device must be aligned to the block size of the
+flash. This applies to both offset and size arguments.
+
+This interface is asynchronous; all calls require a 'token' argument. On
+success, the calls will return OPAL_ASYNC_COMPLETION, and an
+opal_async_completion message will be sent (with the appropriate token
+argument) when the operation completes.
+
+All calls share the same return values:
+
+	OPAL_ASYNC_COMPLETION - operation started, an async completion will
+		be triggered with the @token argument
+	OPAL_PARAMETER - invalid flash id
+	OPAL_PARAMETER - invalid size or offset (alignment, or access beyond end
+		of device)
+	OPAL_BUSY - flash in use
+	OPAL_HARDWARE - error accessing flash device
+
+OPAL_FLASH_READ
+---------------
+
+Parameters:
+	uint64_t id
+	uint64_t offset
+	uint64_t buffer
+	uint64_t size
+	uint64_t token
+
+Reads from the specified flash id, at the specified offset, into the buffer.
+Will trigger an async completion with token when completed.
+
+OPAL_FLASH_ERASE
+---------------
+
+Parameters:
+	uint64_t id
+	uint64_t offset
+	uint64_t size
+	uint64_t token
+
+Erases the specified flash id, at the specified offset and size.  Will trigger
+an async completion with token when completed.
+
+OPAL_FLASH_WRITE
+---------------
+
+Parameters:
+	uint64_t id
+	uint64_t offset
+	uint64_t buffer
+	uint64_t size
+	uint64_t token
+
+Writes buffer to the specified flash id, at the specified offset and size. The
+flash must be erased before being written. Will trigger an async completion with
+token when completed.
+

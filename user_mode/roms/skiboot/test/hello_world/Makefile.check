@@ -1,0 +1,34 @@
+HELLO_WORLD_TEST := test/hello_world/hello_kernel/hello_kernel
+
+.PHONY: hello_world-tests
+hello_world-tests: $(HELLO_WORLD_TEST:%=%-check-smt-mambo)
+hello_world-tests: $(HELLO_WORLD_TEST:%=%-check-mambo)
+hello_world-tests: $(HELLO_WORLD_TEST:%=%-check-qemu)
+
+boot-tests: hello_world-tests
+check: hello_world-tests
+
+$(HELLO_WORLD_TEST:%=%-check-smt-mambo): %-check-smt-mambo: % skiboot.lid
+	$(call Q , BOOT TEST , THREADS=2 ./test/hello_world/run_mambo_hello_world.sh , $@)
+
+$(HELLO_WORLD_TEST:%=%-check-mambo): %-check-mambo: % skiboot.lid
+	$(call Q , BOOT TEST , ./test/hello_world/run_mambo_hello_world.sh, $@)
+
+$(HELLO_WORLD_TEST:%=%-check-qemu): %-check-qemu: % skiboot.lid
+	$(call Q , BOOT TEST , ./test/hello_world/run_qemu_hello_world.sh, $@)
+
+test/hello_world/hello_kernel/hello_kernel.o: test/hello_world/hello_kernel/hello_kernel.S test/hello_world/hello_kernel/hello_kernel.ld
+	$(call Q,CC, $(CC) -m64 -c -MMD -o $@ $< ,$@)
+
+hello_kernel_LDFLAGS=-m64 -Wl,--build-id=none -T test/hello_world/hello_kernel/hello_kernel.ld -ffreestanding -nostdlib -Ttext=0x0
+
+-include $(wildcard test/hello_world/hello_kernel/*.d)
+
+test/hello_world/hello_kernel/hello_kernel: test/hello_world/hello_kernel/hello_kernel.o
+	$(call Q,LD, $(CC) $(hello_kernel_LDFLAGS) -o $@ $^ , $@)
+
+clean: hello_world-test-clean
+
+hello_world-test-clean:
+	$(RM) -f test/hello_world/hello_kernel/hello_kernel
+	$(RM) -f test/hello_world/hello_kernel/hello_kernel.[od]

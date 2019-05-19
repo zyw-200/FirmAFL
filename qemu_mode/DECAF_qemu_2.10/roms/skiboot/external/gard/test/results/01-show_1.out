@@ -1,0 +1,9 @@
+Record ID:    0x00000001
+========================
+Error ID:     0x90000015
+Error Type:         0xe6
+Res Recovery:       0xff
+Path Type: physical
+>System, Instance #0
+ >Node, Instance #0
+  >Processor, Instance #0

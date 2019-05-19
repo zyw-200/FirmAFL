@@ -1,0 +1,51 @@
+make -C /lib/modules/4.10.0-40-generic/build SUBDIRS=/home/zyw/experiment/qemu-2.10.1/shared/kernelinfo/procinfo_generic modules
+make[1]: Entering directory '/usr/src/linux-headers-4.10.0-40-generic'
+  CC [M]  /home/zyw/experiment/qemu-2.10.1/shared/kernelinfo/procinfo_generic/procinfo.o
+/home/zyw/experiment/qemu-2.10.1/shared/kernelinfo/procinfo_generic/procinfo.c: In function ‘linuxdrv_init’:
+/home/zyw/experiment/qemu-2.10.1/shared/kernelinfo/procinfo_generic/procinfo.c:17:71: error: ‘struct module’ has no member named ‘core_size’
+ #define OFFSET_OF(type, field) (  (unsigned long)&( ((struct type *)0)->field ) )
+                                                                       ^
+/home/zyw/experiment/qemu-2.10.1/shared/kernelinfo/procinfo_generic/procinfo.c:113:9: note: in expansion of macro ‘OFFSET_OF’
+         OFFSET_OF(module, core_size),
+         ^
+/home/zyw/experiment/qemu-2.10.1/shared/kernelinfo/procinfo_generic/procinfo.c:17:71: error: ‘struct module’ has no member named ‘module_core’
+ #define OFFSET_OF(type, field) (  (unsigned long)&( ((struct type *)0)->field ) )
+                                                                       ^
+/home/zyw/experiment/qemu-2.10.1/shared/kernelinfo/procinfo_generic/procinfo.c:114:9: note: in expansion of macro ‘OFFSET_OF’
+         OFFSET_OF(module, module_core),
+         ^
+/home/zyw/experiment/qemu-2.10.1/shared/kernelinfo/procinfo_generic/procinfo.c:17:71: error: ‘struct file’ has no member named ‘f_dentry’
+ #define OFFSET_OF(type, field) (  (unsigned long)&( ((struct type *)0)->field ) )
+                                                                       ^
+/home/zyw/experiment/qemu-2.10.1/shared/kernelinfo/procinfo_generic/procinfo.c:174:9: note: in expansion of macro ‘OFFSET_OF’
+         OFFSET_OF(file, f_dentry),
+         ^
+/home/zyw/experiment/qemu-2.10.1/shared/kernelinfo/procinfo_generic/procinfo.c:17:71: error: ‘struct thread_info’ has no member named ‘task’
+ #define OFFSET_OF(type, field) (  (unsigned long)&( ((struct type *)0)->field ) )
+                                                                       ^
+/home/zyw/experiment/qemu-2.10.1/shared/kernelinfo/procinfo_generic/procinfo.c:179:9: note: in expansion of macro ‘OFFSET_OF’
+         OFFSET_OF(thread_info, task),
+         ^
+In file included from ./include/linux/printk.h:6:0,
+                 from ./include/linux/kernel.h:13,
+                 from /home/zyw/experiment/qemu-2.10.1/shared/kernelinfo/procinfo_generic/procinfo.c:2:
+./include/linux/kern_levels.h:4:18: warning: format ‘%lu’ expects argument of type ‘long unsigned int’, but argument 3 has type ‘kprobe_opcode_t * {aka unsigned char *}’ [-Wformat=]
+ #define KERN_SOH "\001"  /* ASCII Start Of Header */
+                  ^
+./include/linux/kern_levels.h:13:19: note: in expansion of macro ‘KERN_SOH’
+ #define KERN_INFO KERN_SOH "6" /* informational */
+                   ^
+/home/zyw/experiment/qemu-2.10.1/shared/kernelinfo/procinfo_generic/procinfo.c:190:20: note: in expansion of macro ‘KERN_INFO’
+             printk(KERN_INFO
+                    ^
+/home/zyw/experiment/qemu-2.10.1/shared/kernelinfo/procinfo_generic/procinfo.c: At top level:
+/home/zyw/experiment/qemu-2.10.1/shared/kernelinfo/procinfo_generic/procinfo.c:22:25: warning: ‘my_kretprobe’ defined but not used [-Wunused-variable]
+ static struct kretprobe my_kretprobe;
+                         ^
+scripts/Makefile.build:301: recipe for target '/home/zyw/experiment/qemu-2.10.1/shared/kernelinfo/procinfo_generic/procinfo.o' failed
+make[2]: *** [/home/zyw/experiment/qemu-2.10.1/shared/kernelinfo/procinfo_generic/procinfo.o] Error 1
+Makefile:1524: recipe for target '_module_/home/zyw/experiment/qemu-2.10.1/shared/kernelinfo/procinfo_generic' failed
+make[1]: *** [_module_/home/zyw/experiment/qemu-2.10.1/shared/kernelinfo/procinfo_generic] Error 2
+make[1]: Leaving directory '/usr/src/linux-headers-4.10.0-40-generic'
+Makefile:6: recipe for target 'default' failed
+make: *** [default] Error 2

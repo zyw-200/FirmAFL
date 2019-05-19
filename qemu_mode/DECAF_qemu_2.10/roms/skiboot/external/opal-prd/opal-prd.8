@@ -1,0 +1,78 @@
+.TH opal-prd 8 ""
+.SH NAME
+opal-prd \- Processor recovery diagnostics daemon for OpenPower hardware
+.SH SYNOPSIS
+.SY opal\-prd
+.OP \-\-debug
+.OP \-\-file <hbrt\-image>
+.OP \-\-pnor <device>
+.OP daemon
+.
+.SY opal\-prd
+.I <command>
+.OP arguments
+.YS
+.SH DESCRIPTION
+\fBopal-prd\fP is a daemon that listens for hardware diagnostic events (by
+listening on the \fI/dev/opal-prd\fP device), and executes firmware-provided
+executable code to handle these events. Only one instance of the daemon
+can be running at a time.
+
+.PP
+If no arguments are provided, or the \fIdaemon\fP command is used, then
+the PRD daemon will be started and will listen for incoming hardware events.
+Generally, this will be run from init as a background service, and not
+be run as a user or with user interaction.
+
+.PP
+\fIopal-prd\fP will log to syslog, using the LOG_DAEMON facility. Messages will
+use the string "opal-prd" for their syslog ident.
+
+.PP
+For debugging, run the daemon with the \fI--debug\fP and \fI--stdio\fP
+options. This will log to stdout (instead of syslog), and enable extra
+debugging information.
+
+.PP
+A running opal-prd daemon will also listen for control messages from
+the user; these are sent using the same \fIopal-prd\fP executable, run
+with the <command> argument:
+
+.RS
+ opal-prd <command> [arguments]
+.RE
+
+.PP
+Note that the daemon must be running in the background here, as a separate
+process.
+
+.PP
+Currently, there's one command available, 'occ', for controlling the
+on-chip-controllers. That has 3 possible sub-commands: \fIreset\fP,
+\fIenable\fP, and \fIdisable\fP.
+
+.SH OPTIONS
+.TP
+\fB\-\-debug\fR
+verbose logging for debug information
+.TP
+\fB\-\-pnor\fR DEVICE
+use PNOR MTD device
+.TP
+\fB\-\-file\fR FILE
+use FILE for hostboot runtime code (instead of code
+exported by firmware)
+.TP
+\fB\-\-stdio\fR
+log to stdio, instead of syslog
+
+.SH FILES
+.PD 0
+.B /dev/opal-prd
+.br
+.B /run/opal-prd-control
+.br
+.PD
+
+.SH "SEE ALSO"
+syslog(3)
