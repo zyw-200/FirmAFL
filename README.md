@@ -1,7 +1,18 @@
 # FirmAFL
 
+[![Build Status]]
+
+FIRM-AFL is the first high-throughput greybox fuzzer for IoT firmware. FIRM-AFL addresses two fundamental problems in IoT fuzzing. First, it addresses compatibility issues by enabling fuzzing for POSIX-compatible firmware that can be emulated in a system emulator. Second, it addresses the performance bottleneck caused by system-mode emulation with a novel technique called "augmented process emulation". By combining system-mode emulation and user-mode emulation in a novel way, augmented process emulation provides high compatibility as system-mode emulation and high throughput as user-mode emulation. 
+
 ## Publication
+
 	Yaowen Zheng, Ali Davanian, Heng Yin, Chengyu Song, Hongsong Zhu, Limin Sun, “Firm-AFL: High-throughput greybox fuzzing of IoT firmware via augmented process emulation,” in USENIX Security Symposium, 2019.
+
+## Introduction
+	
+![alt tag](https://github.com/zyw-200/FirmAFL/tree/master/image/augmented process emulation.png)
+![alt tag](https://github.com/zyw-200/FirmAFL/tree/master/image/overview of FirmAFL.png)
+
 ### TriforceAFL_new
 
 		A tool for simulation, dynamic analysis and fuzzing of IoT firmware.
