@@ -61,6 +61,9 @@ Fig 2 the overview of FIRM-AFL
 Our system is built on top of TriforceAFL, DECAF, AFL, and Firmadyne.
 
 TriforceAFL: AFL/QEMU fuzzing with full-system emulation, https://github.com/nccgroup/TriforceAFL.
+
 DECAF: "Make it work, make it right, make it fast: building a platform-neutral whole-system dynamic binary analysis platform", Andrew Henderson, Aravind Prakash, Lok Kwong Yan, Xunchao Hu, Xujiewen Wang, Rundong Zhou, and Heng Yin, to appear in the International Symposium on Software Testing and Analysis (ISSTA'14), San Jose, CA, July 2014.
+
 AFL: american fuzzy lop (2.52b), http://lcamtuf.coredump.cx/afl/.
+
 Firmadyne: Daming D. Chen, Maverick Woo, David Brumley, and Manuel Egele. “Towards automated dynamic analysis for Linux-based embedded firmware,” in Network and Distributed System Security Symposium (NDSS’16), 2016.
