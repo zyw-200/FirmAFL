@@ -42,5 +42,3 @@
 			Run "/FILE_LOAD/mirai.mpsl", the plugin works.
 
 
-
-# IOTFuzzer_Full
