@@ -1,7 +1,7 @@
 #FirmAFL
 
 ##Publication
-	"FIRM-AFL: High-Throughput Greybox Fuzzing of IoT Firmware via Augmented Process Emulation", Yaowen Zheng, 
+	Yaowen Zheng, Ali Davanian, Heng Yin, Chengyu Song, Hongsong Zhu, Limin Sun, “Firm-AFL: High-throughput greybox fuzzing of IoT firmware via augmented process emulation,” in USENIX Security Symposium, 2019.
 ###TriforceAFL_new
 
 		A tool for simulation, dynamic analysis and fuzzing of IoT firmware.
