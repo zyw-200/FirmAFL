@@ -8,7 +8,7 @@ FIRM-AFL is the first high-throughput greybox fuzzer for IoT firmware. FIRM-AFL 
 
 ## Introduction
 	
-![alt tag](https://github.com/zyw-200/FirmAFL/tree/master/image/augmented_process_emulation.png)
+![alt tag](https://github.com/zyw-200/FirmAFL/tree/master/image/augmented_process_emulation.png){:class="img_responsive"}
 
 Fig 1 the overview of augmented process emulation
 
