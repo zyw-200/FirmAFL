@@ -8,7 +8,7 @@ Yaowen Zheng, Ali Davanian, Heng Yin, Chengyu Song, Hongsong Zhu, Limin Sun, “
 
 ## Introduction
 	
-<img src="https://github.com/zyw-200/FirmAFL/raw/master/image/augmented_process_emulation.png" width=30% height=30% />
+<img src="https://github.com/zyw-200/FirmAFL/raw/master/image/augmented_process_emulation.png" width=60% height=60% align=center/>
 
 ![alt tag](https://github.com/zyw-200/FirmAFL/raw/master/image/augmented_process_emulation.png)
 
