@@ -10,11 +10,11 @@ Yaowen Zheng, Ali Davanian, Heng Yin, Chengyu Song, Hongsong Zhu, Limin Sun, “
 	
 ![alt tag](https://github.com/zyw-200/FirmAFL/raw/master/image/augmented_process_emulation.png)
 
-< center> Fig 1. The overview of augmented process emulation < /center>
+<center> Fig 1. The overview of augmented process emulation </center>
 
 ![alt tag](https://github.com/zyw-200/FirmAFL/raw/master/image/overview_of_FirmAFL.png)
 
-< center> Fig 2. The overview of FIRM-AFL < /center>
+<center> Fig 2. The overview of FIRM-AFL </center>
 
 ### TriforceAFL_new
 
