@@ -1,18 +1,18 @@
-#FirmAFL
+# FirmAFL
 
-##Publication
+## Publication
 	Yaowen Zheng, Ali Davanian, Heng Yin, Chengyu Song, Hongsong Zhu, Limin Sun, “Firm-AFL: High-throughput greybox fuzzing of IoT firmware via augmented process emulation,” in USENIX Security Symposium, 2019.
-###TriforceAFL_new
+### TriforceAFL_new
 
 		A tool for simulation, dynamic analysis and fuzzing of IoT firmware.
 		Combination of TriforceAFL, firmadyne and DECAF.
 
-####DECAF: upgraded to the newest qemu version 2.10.1
+#### DECAF: upgraded to the newest qemu version 2.10.1
 		It is included in qemu_mode/qemu dir. 
 		In our case, run ./configure --target-list=mipsel-softmmu
 		Run make
 
-####Firmadyne: we use its custom kernel and libnvram to emulate IoT firmware. 
+#### Firmadyne: we use its custom kernel and libnvram to emulate IoT firmware. 
 		cd firmadyne 
 		See README in firmadyne and do as it says.(NOTICE: need to set FIRMWARE_DIR in firmadyne.config
 		Here, we test DIR-815_FIRMWARE_1.01.ZIP, a router firmware image based on mipsel cpu arch.
@@ -21,12 +21,12 @@
 		
 
 
-####TriforceAFL: AFL fuzzing with full-system emulation
+#### TriforceAFL: AFL fuzzing with full-system emulation
 		Run make
   
 
 
-####Usage:
+#### Usage:
 		cd firmadyne
 		Run ./scratch/(num)/run.sh 
 		In another terminal, run 'telnet 127.0.0.1 4444', into qemu monitor console.
