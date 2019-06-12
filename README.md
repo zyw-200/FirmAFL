@@ -2,13 +2,6 @@
 
 ##Publication
 	"FIRM-AFL: High-Throughput Greybox Fuzzing of IoT Firmware via Augmented Process Emulation", Yaowen Zheng, 
-
-
-##Introduction
-	A tool for fuzzing of IoT firmware.
-	build on top of TriforceAFL, firmadyne, DECAF and AFL.
-
-
 ###TriforceAFL_new
 
 		A tool for simulation, dynamic analysis and fuzzing of IoT firmware.
