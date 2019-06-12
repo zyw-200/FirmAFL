@@ -8,7 +8,8 @@ Yaowen Zheng, Ali Davanian, Heng Yin, Chengyu Song, Hongsong Zhu, Limin Sun, “
 
 ## Introduction
 	
-<img src="https://github.com/zyw-200/FirmAFL/raw/master/image/augmented_process_emulation.png" />
+<img src="https://github.com/zyw-200/FirmAFL/raw/master/image/augmented_process_emulation.png" width=30% height=30% />
+
 ![alt tag](https://github.com/zyw-200/FirmAFL/raw/master/image/augmented_process_emulation.png)
 
 Fig 1. The overview of augmented process emulation
