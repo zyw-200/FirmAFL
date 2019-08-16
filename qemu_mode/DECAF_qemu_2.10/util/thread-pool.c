@@ -12,7 +12,7 @@
  * the COPYING file in the top-level directory.
  *
  * Contributions after 2012-01-13 are licensed under the terms of the
- * GNU GPL, version 2 or (at your option) any later version.
+ * GNU GPL, version 2 or (at your option) any later version.thread_pool
  */
 #include "qemu/osdep.h"
 #include "qemu-common.h"
@@ -22,6 +22,8 @@
 #include "trace.h"
 #include "block/thread-pool.h"
 #include "qemu/main-loop.h"
+
+ThreadPool *global_pool; 
 
 static void do_spawn_thread(ThreadPool *pool);
 
@@ -118,6 +120,14 @@ static void *worker_thread(void *opaque)
     qemu_cond_signal(&pool->worker_stopped);
     qemu_mutex_unlock(&pool->lock);
     return NULL;
+}
+
+//zyw
+void spawn_thread_after_fork()
+{
+    QemuThread t;
+    assert(global_pool!=0);
+    qemu_thread_create(&t, "worker", worker_thread, global_pool, QEMU_THREAD_DETACHED);
 }
 
 static void do_spawn_thread(ThreadPool *pool)
@@ -319,6 +329,7 @@ ThreadPool *thread_pool_new(AioContext *ctx)
 {
     ThreadPool *pool = g_new(ThreadPool, 1);
     thread_pool_init_one(pool, ctx);
+    global_pool = pool;
     return pool;
 }
 
