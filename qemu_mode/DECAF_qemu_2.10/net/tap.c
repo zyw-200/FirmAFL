@@ -25,7 +25,7 @@
 
 #include "qemu/osdep.h"
 #include "tap_int.h"
-
+#include "zyw_config1.h"
 
 #include <sys/ioctl.h>
 #include <sys/wait.h>
@@ -293,8 +293,13 @@ static void tap_set_offload(NetClientState *nc, int csum, int tso4,
     tap_fd_set_offload(s->fd, csum, tso4, tso6, ecn, ufo);
 }
 
+extern int afl_user_fork;
 static void tap_exit_notify(Notifier *notifier, void *data)
 {
+#ifdef FUZZ
+    if(afl_user_fork == 1)
+        return;
+#endif
     TAPState *s = container_of(notifier, TAPState, exit);
     Error *err = NULL;
 
