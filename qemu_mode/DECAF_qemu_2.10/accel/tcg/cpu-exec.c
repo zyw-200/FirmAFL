@@ -16,9 +16,18 @@
  * You should have received a copy of the GNU Lesser General Public
  * License along with this library; if not, see <http://www.gnu.org/licenses/>.
  */
+
+int lmbench_count = 0;
+int lat_select_init = 0;
+extern int thread_pool;
+extern int analysis_start;
+extern int coroutine_start;
+int stay_in_full = 0;
+
 int start_fork_pc;
 int libuclibc_addr = 0;
 int not_exit = 0;
+int tmp_not_exit = 0;
 int last_pc = 0;
 int last_program_pc = 0;
 int end_pc = 0;
@@ -39,8 +48,10 @@ int accept_times = 0;
 int accept_fd = 0;
 int handle_recv = 0;
 int count_142 = 0;
+int count_3 = 0;
 int sys_count = 0;
 
+int CP0_UserLocal = 0;
 
 
 #include "zyw_config1.h"
@@ -148,35 +159,7 @@ char feed_type[256];
 int environ_offset = 0;
 char lib_name[256];
 int program_type = 0;
-/*
-TranslationBlock *fork_tb[65535];
-int tb_index = 0;
-fork_tb_add(TranslationBlock *tb)
-{
-    fork_tb[tb_index++] = tb;
-    assert(tb_index < 65535);
-    
-}
-fork_tb_flush()
-{
-    int times = 0;
-    tb_lock();
-    for(int i = 0; i<tb_index; i++)
-    {
-        if(fork_tb[i]->invalid == false)
-        {
 
-            times++;
-            tb_phys_invalidate(fork_tb[i], -1);
-            tb_free(fork_tb[i]);
-        }
-    }
-    tb_index = 0;
-    tb_unlock();
-    //printf("flush times:%d\n",times);
-
-}
-*/
 
 int FirmAFL_config()
 {
@@ -323,7 +306,15 @@ int write_package(CPUState *cpu, int vir_addr, char* cont, int len)
 {
     //DECAF_printf("write_package:%x,%x\n", vir_addr, len);
     int ret = DECAF_write_mem(cpu, vir_addr, len, cont);
-    assert(ret!=-1);
+    if(ret ==-1)
+    {
+        DECAF_printf("write failed %x,%x\n", vir_addr, len);
+        sleep(1000);
+    }
+    else
+    {
+        //DECAF_printf("write %x,%x\n", vir_addr, len);
+    }
     return vir_addr + len;
 }
 
@@ -412,6 +403,68 @@ void prepare_feed_input(CPUState * cpu)
     
 }
 
+//a-z：97-122
+//A-Z：65-90
+//0-9：48-57
+int check_input(char * input, int len) // if all are readable charater before =
+{   
+    int i = 0;
+    while((input[i]>=97 && input[i]<=122) || (input[i]>=65 && input[i]<=90) || (input[i]>=48 && input[i]<=57))
+    {
+        i++;
+        if(i == len)
+        {
+            return 1;
+        }
+        if(input[i] == '=')
+        {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+int check_http_header(char * input) // if all are readable charater before =
+{   
+    if(program_id == 9925)
+    {
+        if(strncmp(input, "GET /session_login.php HTTP/1.1", 31) == 0)
+        {
+            return 1;
+        }
+        else
+        {
+            return 0;
+        }
+    }
+    else if(program_id == 10853)
+    {
+        if(strncmp(input, "POST /HNAP1/ HTTP/1.1", 21) == 0)
+        {
+            return 1;
+        }
+        else
+        {
+            return 0;
+        }
+
+    }
+    else if(program_id == 161161)
+    {
+        if(strncmp(input, "POST /apply.cgi HTTP/1.1\r\n", 26) == 0)
+        {
+            return 1;
+        }
+        else
+        {
+            return 0;
+        }
+
+    }
+
+    return 1;
+}
+
 int feed_input(CPUState * cpu)
 {
     if(strcmp(feed_type, "FEED_ENV") == 0)
@@ -429,6 +482,10 @@ int feed_input(CPUState * cpu)
 
         char input_buf[MAX_LEN];
         int get_len = getWork(input_buf, MAX_LEN);
+        if(check_input(input_buf, 1) == 0)
+        {
+            return 2;
+        }
         //DECAF_printf("feed_input: %x, %s\n", content_addr, input_buf);
         int ret = DECAF_write_mem(cpu, content_addr, get_len, input_buf);
         DECAF_write_mem(cpu, content_addr + get_len, 1, "\0"); //important
@@ -480,6 +537,14 @@ int feed_input(CPUState * cpu)
         return 1;
         */
         total_len = getWork(recv_buf, 4096);
+        
+        
+        if(check_http_header(recv_buf) == 0)
+        {
+            //printf("recv_buf:%s\n", recv_buf);
+            return 2;
+        }
+        
         //DECAF_printf("recv_buf:%s\n", recv_buf);
     }
     else if(strcmp(feed_type, "FEED_CMD") == 0)
@@ -604,7 +669,9 @@ int data_length(unsigned long value)
     return data_len;    
 }
 
-#ifdef STORE_PAGE_FUNC
+//extern FILE *file_log;
+int mem_mapping_exit = 0;
+
 static void do_block_begin(DECAF_Callback_Params* param)
 {
     CPUState *cpu = param->bb.env;
@@ -615,7 +682,6 @@ static void do_block_begin(DECAF_Callback_Params* param)
 #elif defined(TARGET_ARM)
     target_ulong ra = 0;
 #endif
-
     if(afl_user_fork && (pc == 0x80133a84 || pc == 0x80133ac4))
     {
         DECAF_printf("print_fatal_signal:%x\n",pc);
@@ -624,9 +690,15 @@ static void do_block_begin(DECAF_Callback_Params* param)
         doneWork(ret_value);
         //goto end;
 #endif
+#ifdef MEM_MAPPING
+        target_ulong pgd = DECAF_getPGD(cpu);
+        if(pgd == httpd_pgd)
+        {
+            mem_mapping_exit = 1;
+        }
+#endif
     }
-
-
+#ifdef STORE_PAGE_FUNC
 #ifdef SNAPSHOT_SYNC
     if(afl_user_fork)
     {
@@ -640,6 +712,7 @@ static void do_block_begin(DECAF_Callback_Params* param)
             in_httpd = 0;
         }
     }
+#endif
 #endif
     /*
     if(afl_user_fork && into_syscall == 4005 && tmptmptmp == 1)
@@ -670,12 +743,13 @@ static void do_block_begin(DECAF_Callback_Params* param)
     return;
 }
 
+/*
 static void do_block_end(DECAF_Callback_Params* param){ 
-    
     return;
 
 }
-
+*/
+#ifdef STORE_PAGE_FUNC
 static void fuzz_mem_write(DECAF_Callback_Params *dcp)
 {
 
@@ -797,9 +871,10 @@ int callbacktests_init(void)
     DECAF_printf("Hello World\n");
     processbegin_handle = VMI_register_callback(VMI_CREATEPROC_CB, &callbacktests_loadmainmodule_callback, NULL);
     removeproc_handle = VMI_register_callback(VMI_REMOVEPROC_CB, &callbacktests_removeproc_callback, NULL);
-#ifdef STORE_PAGE_FUNC
+
     block_begin_handle = DECAF_registerOptimizedBlockBeginCallback(&do_block_begin, NULL, INV_ADDR, OCB_ALL);
-    block_end_handle = DECAF_registerOptimizedBlockEndCallback(&do_block_end, NULL, INV_ADDR, INV_ADDR);
+#ifdef STORE_PAGE_FUNC
+    //block_end_handle = DECAF_registerOptimizedBlockEndCallback(&do_block_end, NULL, INV_ADDR, INV_ADDR);
     mem_write_cb_handle = DECAF_register_callback(DECAF_MEM_WRITE_CB,fuzz_mem_write,NULL);
 #endif                  
     return (0);
@@ -934,6 +1009,7 @@ static inline tcg_target_ulong cpu_tb_exec(CPUState *cpu, TranslationBlock *itb)
 #endif /* DEBUG_DISAS */
 
     cpu->can_do_io = !use_icount;
+
     ret = tcg_qemu_tb_exec(env, tb_ptr);
     cpu->can_do_io = 1;
     last_tb = (TranslationBlock *)(ret & ~TB_EXIT_MASK);
@@ -960,15 +1036,15 @@ static inline tcg_target_ulong cpu_tb_exec(CPUState *cpu, TranslationBlock *itb)
     }
     else
     {
+
 #ifdef FUZZ
-        
-        //if(afl_user_fork && !into_syscall) //important
-        if(afl_user_fork && into_syscall == 0 && itb->pc!=last_log_pc) //important
+        if(afl_user_fork && !into_syscall && itb->pc < 0x80000000) //important
+        //if(afl_user_fork && into_syscall == 0 && itb->pc!=last_log_pc) //important
         {
             target_ulong pgd = DECAF_getPGD(cpu);
             if(pgd == httpd_pgd)
             {
-                last_log_pc = itb->pc;
+                //last_log_pc = itb->pc;
                 CPUArchState *env = cpu->env_ptr;
                 AFL_QEMU_CPU_SNIPPET2;
             }   
@@ -1164,24 +1240,6 @@ static inline TranslationBlock *tb_find(CPUState *cpu,
 
                 /* if no translated code available, then translate it now */
                 tb = tb_gen_code(cpu, pc, cs_base, flags, 0);
-                /*
-                if(afl_user_fork && pc < 0x80000000) 
-                {
-                    target_ulong inner_pgd = DECAF_getPGD(cpu);
-                    if(inner_pgd == httpd_pgd)
-                    {
-                        fork_tb_add(tb);
-                    }
-                    //printf("tb_gen_code:%x\n", pc);
-                    //AFL_QEMU_CPU_SNIPPET1;
-                }
-                */
-                /*
-                if(!afl_user_fork && pro_start)
-                {
-                    before_fork_pc_add(pc); //make before fork pc equal to 0
-                }
-                */
 
 #ifdef CAL_TIME_ext
                 if(afl_user_fork && into_syscall) 
@@ -1278,12 +1336,6 @@ static inline void cpu_handle_debug_exception(CPUState *cpu)
 
 static inline bool cpu_handle_exception(CPUState *cpu, int *ret)
 {
-    /*
-    if(afl_user_fork && cpu->exception_index != -1 && tmptmptmp == 1)
-    {   CPUArchState *env = cpu->env_ptr;
-        DECAF_printf("exception_index:%d, %x,%x,%x\n", cpu->exception_index, env->CP0_Status, env->CP0_Cause, env->CP0_EPC);
-    }
-    */
     if (cpu->exception_index >= 0) {
         if (cpu->exception_index >= EXCP_INTERRUPT) {
             /* exit request from the cpu execution loop */
@@ -1335,50 +1387,6 @@ static inline bool cpu_handle_exception(CPUState *cpu, int *ret)
 static inline bool cpu_handle_interrupt(CPUState *cpu,
                                         TranslationBlock **last_tb)
 {
-
-
-#ifdef TARGET_MIPS
-    CPUArchState * env = cpu->env_ptr;
-    if(afl_user_fork && cpu->interrupt_request != 0 && tmptmptmp == 1)
-    {   /*
-        
-        printf("interrupt:%d, %x,%x,%x,\n", cpu->interrupt_request,env->CP0_Status, env->CP0_Cause, env->CP0_EPC);
-        
-        CPUArchState *env = (CPUArchState *) cpu->env_ptr;
-        target_ulong pc = env->active_tc.PC;
-        if(pc < 0x80000000)
-        {
-            target_ulong pgd = DECAF_getPGD(cpu);
-            if(pgd == httpd_pgd)
-            {
-                DECAF_printf("interrupt_request:%x,%x,stack:%x\n", cpu->interrupt_request, pc, env->active_tc.gpr[29]);
-                before_interrupt_stack = env->active_tc.gpr[29];
-            }
-        }
-        */
-    }
-
-
-    /*
-    if(afl_user_fork && cpu->interrupt_request != 2 && cpu->interrupt_request != 0)
-    {
-        //cpu->interrupt_request = 0;
-        //CPUArchState *env = cpu->env_ptr;
-        //env->active_tc.PC = last_pc;
-        //DECAF_printf("last pc: %x\n", last_pc);
-        DECAF_printf("into cpu handle interrupt\n");
-        target_ulong pgd = DECAF_getPGD(cpu);
-        if(pgd != httpd_pgd)
-        {
-            DECAF_printf("interupt:%d\n", cpu->interrupt_request);
-            sleep(3);
-            //cpu->interrupt_request = 0;
-            //DECAF_printf("other program handle interrupt\n");
-        }
-    }
-    */
-#endif
-
     CPUClass *cc = CPU_GET_CLASS(cpu);
 
     if (unlikely(atomic_read(&cpu->interrupt_request))) {
@@ -1678,6 +1686,39 @@ void prepare_exit()
 #endif //FUZZ
 }
 
+int cpu_exec_head(CPUState *cpu)
+{
+    CPUClass *cc = CPU_GET_CLASS(cpu);
+    int ret;
+    SyncClocks sc = { 0 };
+
+    /* replay_interrupt may need current_cpu */
+    current_cpu = cpu;
+
+    if (cpu_handle_halt(cpu)) {
+        return EXCP_HALTED;
+    }
+
+    //rcu_read_lock();
+
+    cc->cpu_exec_enter(cpu);
+
+    /* Calculate difference between guest clock and host clock.
+     * This delay includes the delay of the last cycle, so
+     * what we have to do is sleep until it is 0. As for the
+     * advance/delay we gain here, we try to fix it next time.
+     */
+    init_delay_params(&sc, cpu);
+}
+
+int cpu_exec_tail(CPUState * cpu)
+{
+    CPUClass *cc = CPU_GET_CLASS(cpu);
+    cc->cpu_exec_exit(cpu);
+    //rcu_read_unlock();
+}
+
+
 /* main execution loop */
 int feed_input_times = 0;
 
@@ -1707,6 +1748,15 @@ int cpu_exec(CPUState *cpu)
 
     /* prepare setjmp context for exception handling */
     if (sigsetjmp(cpu->jmp_env, 0) != 0) {
+        if(afl_user_fork)
+        {
+            //if(cpu->exception_index == 65537)
+            //{
+
+
+               // printf("trigger exception:%d,%d\n", cpu->exception_index, cpu->halted);
+            //}
+        }
 #ifdef NEW_MAPPING
         if(tlb_match)
         {
@@ -1739,7 +1789,6 @@ int cpu_exec(CPUState *cpu)
             qemu_mutex_unlock_iothread();
         }
     }
-
 
     CPUArchState * env = cpu->env_ptr;
 #ifdef AUTO_FIND_FORK_PC
@@ -1786,7 +1835,26 @@ int cpu_exec(CPUState *cpu)
         }
     }
 #endif
-
+    /*
+    if(httpd_pgd!=0 && cpu->exception_index == 17 && env->active_tc.gpr[2] == 4283)
+    {
+        printf("(((( set thread area:%x,%x,%x\n", env->active_tc.gpr[4], env->active_tc.gpr[5],env->active_tc.gpr[6]);
+    }
+    */
+#ifdef LMBENCH
+    if(cpu->exception_index == 17 && httpd_pgd!= 0)
+    {
+        target_ulong pgd = DECAF_getPGD(cpu);
+        if(pgd != 0)
+        {
+            if(env->active_tc.gpr[2] == 4283)
+            {
+                CP0_UserLocal = env->active_tc.gpr[4];
+                printf("set thread are:%x\n", CP0_UserLocal);
+            }
+        }
+    }
+#endif
     if(afl_user_fork && cpu->exception_index == 17 && into_syscall == 0)
     {
 
@@ -1821,17 +1889,8 @@ int cpu_exec(CPUState *cpu)
             int a3 = env->active_tc.gpr[7];
             into_syscall = env->active_tc.gpr[2];
             before_syscall_stack = env->active_tc.gpr[29];
-            curr_state_pc = env->active_tc.PC;  
-            /*
-            if(into_syscall == 4003 || into_syscall == 4175|| into_syscall == 4142)
-            {
-                DECAF_printf("sys num:%d, fd:%d, len:%d\n", into_syscall, a0, a2);
-            }
-            */
-            //assert(cpu->thread_id == ori_thread);
-//#ifndef FUZZ
-            DECAF_printf("sys num:%d,%x,%x,%x,%x\n", into_syscall,a0, a1, a2, a3);
-//#endif
+            curr_state_pc = env->active_tc.PC;
+
             if(print_debug)
             {   
                 sys_count++;
@@ -1842,18 +1901,6 @@ int cpu_exec(CPUState *cpu)
                     char prog_name[100];
                     DECAF_read_mem(cpu, a0, 100, prog_name);
                     DECAF_printf("open:%s, %x\n", prog_name, a0);
-                    /*
-                    if(strcmp(prog_name, "./video.asp") == 0)
-                    {
-                        tmptmptmp = 1;
-                        open_log_file= fopen("open_log", "w+");
-                    }
-                    else
-                    {
-                        tmptmptmp = 0;
-                    }
-                    */
-
                 }
                 if(into_syscall == 4175)
                 {
@@ -1868,7 +1915,6 @@ int cpu_exec(CPUState *cpu)
                     DECAF_printf("last pc:%x\n", last_program_pc);
                 }
             }
-
             if(into_syscall == 4001 || into_syscall == 4246){  
                 if_exit = 1;
             }
@@ -1878,89 +1924,134 @@ int cpu_exec(CPUState *cpu)
                 {
                     if_exit = 1;
                 }
-                /*
-                else if(program_id == 161160)
-                {
-                    count_142++;
-                    if(count_142 == 2)
-                    {
-                        if_exit = 1;
-                        count_142 = 0;
-                    }
-                }
-                */
                 else if(program_id == 161161)
                 {
-                    /*
-                    count_142++;
-                    if(count_142 == 3)
+                    if(last_syscall == 4142)
                     {
                         if_exit = 1;
-                        count_142 = 0;
+                        last_syscall = 0;
                     }
-                    */
                 }
                 
             }
-            else if(program_id == 161161 && sys_count == 181)
+
+            else if(into_syscall == 4003)
             {
-                if_exit = 1;
+                if(program_id == 161161)
+                {
+                    //DECAF_printf("count3:%x\n", count_3);
+                    count_3++;
+                    if(count_3 == 3)
+                    {
+                        if_exit = 1;
+                        count_3 = 0;
+                        last_syscall = 0;
+                        goto exit;
+                    }
+                }
             }
+
+            else if(into_syscall == 4045)
+            {
+                if(program_id == 10853)
+                {
+                    if_exit = 1;
+                }
+                
+                if(program_id == 161161)
+                {
+                    if_exit = 1;
+                }
+            }
+            /*
+            else if(into_syscall == 4140)
+            {
+                if(program_id == 161161)
+                {
+                    if_exit = 1;
+                }
+            }
+            */
+            //161161
+            if(into_syscall != 4003)
+            {
+                count_3 = 0;
+            }
+            last_syscall = into_syscall;
+
 #ifdef FUZZ
             if(a0 == accept_fd && (into_syscall == 4175 || into_syscall == 4003 || into_syscall == 4176)
-             && strcmp(feed_type,"FEED_HTTP") == 0)
+             && strcmp(feed_type,"FEED_HTTP") == 0 && feed_input_times == 0) //161161
             {
+                get_page_addr_code(env, a1); //important
                 int final_recv_len = 0;
-
-
-                feed_input_times++;
-                if(feed_input_times == 3)
+                //161161
+                if(program_id == 161161)
                 {
-                    DECAF_printf("second time feed input\n");
-                    char * tmp_str = "POST /apply.cgi HTTP/1.1\r\n";
-                   // char * tmp_str = "POST HTTP/1.1\r\n";
-                    int tmp_str_len = strlen(tmp_str);
-                    int tmpp_addr = write_package(cpu, a1, tmp_str, tmp_str_len);
-                    DECAF_write_mem(cpu, tmpp_addr, 1, "\0"); //important
-                    final_recv_len = tmp_str_len;
+                    feed_input_times++;
+                }
+    
+                int flag = a3;
+                int len = a2;
+                int rest_len = total_len - buf_read_index;
+                //printf("hook flag:%x, %x\n", MSG_PEEK, flag);
+                //printf("rest len:%d\n", rest_len);
+                if(rest_len > len)
+                {
+                    final_recv_len = len;
                 }
                 else
                 {
-                    //printf("hook recv fd:%d\n", accept_fd);
-                    int flag = a3;
-                    int len = a2;
-                    int rest_len = total_len - buf_read_index;
-                    //printf("hook flag:%x, %x\n", MSG_PEEK, flag);
-                    //printf("rest len:%d\n", rest_len);
-                    if(rest_len > len)
-                    {
-                        final_recv_len = len;
-                    }
-                    else
-                    {
-                        final_recv_len  = rest_len;
-                    }
-                    int tmp_addr = write_package(cpu, a1, recv_buf + buf_read_index, final_recv_len);
-                    DECAF_write_mem(cpu, tmp_addr, 1, "\0"); //important
-                    //printf("recv :%d,%d,%x, %s\n", accept_fd, len, env->active_tc.gpr[5], recv_buf);
-                    if(MSG_PEEK != flag)
-                    {
-                        buf_read_index+=final_recv_len;
-                    }
-                    else
-                    {
-                        //printf("recv msg_peek\n");
-                    }
+                    final_recv_len  = rest_len;
                 }
+                int tmp_addr = write_package(cpu, a1, recv_buf + buf_read_index, final_recv_len);
+                DECAF_write_mem(cpu, tmp_addr, 1, "\0"); //important
+                //DECAF_printf("recv :%d,%d,%x, %s\n", accept_fd, len, env->active_tc.gpr[5], recv_buf);
+                if(MSG_PEEK == flag && (into_syscall == 4175 || into_syscall == 4176))
+                {
+                    //printf("recv msg_peek\n");
+                }
+                else
+                {
+                    //printf("feed input:%s\n", recv_buf + buf_read_index);
+                    buf_read_index+=final_recv_len;   
+                }
+
                 skip_syscall(cpu, final_recv_len, 0);
                 goto skip_to_pos;
             }
+            /*
             if(a0 == accept_fd && into_syscall == 4004 && strcmp(feed_type,"FEED_HTTP") == 0)
             {
                 skip_syscall(cpu, a2, 0);
                 goto skip_to_pos;
             }
+            */
+            else if(a0 == accept_fd && into_syscall == 4178 && strcmp(feed_type,"FEED_HTTP") == 0)
+            {
+                skip_syscall(cpu, a2, 0);
+                goto skip_to_pos;
+            }
+            else if(a0 == accept_fd && into_syscall == 4004 && strcmp(feed_type,"FEED_HTTP") == 0)
+            {
+                if(program_id == 161161)
+                {
+                   if_exit = 1;
+                   goto exit;
+                }
+                else
+                {
+                    skip_syscall(cpu, a2, 0);
+                    goto skip_to_pos;
+                }
+            }
+            else if(a0 == accept_fd && into_syscall == 4140)
+            {
+                skip_syscall(cpu,0, 0);
+                goto skip_to_pos;
+            }
 #endif
+            tmp_not_exit = 0;
             if(into_syscall == 4002) //fork
             {
                 not_exit = 1;
@@ -1973,11 +2064,13 @@ int cpu_exec(CPUState *cpu)
                 skip_syscall(cpu, 100, 0);
                 goto skip_to_pos;
             }
+            
             else if(into_syscall == 4166) //nanosleep
             {
                 skip_syscall(cpu, 0, 0);
                 goto skip_to_pos;
             }
+            /*
             else if(into_syscall == 4178) //send
             {
                 if(program_id == 10853)
@@ -1986,14 +2079,18 @@ int cpu_exec(CPUState *cpu)
                     goto skip_to_pos;
                 }             
             }
-            else if(into_syscall == 4194 || into_syscall == 4119) //sig
+            */
+            else if(into_syscall == 4194 || into_syscall == 4119 || into_syscall == 4193) //sig
             {
-                if(program_id == 10853 || program_id == 9925)
+                if(program_id == 10853 || program_id == 9925 || program_id == 129781 || program_id == 161161)
                 {
+                    //printf("tmp_not_exit 1\n");
+                    tmp_not_exit = 1;
                     skip_syscall(cpu, 0, 0);
                     goto skip_to_pos;
                 }             
             }
+            
             else if(into_syscall == 4170) //connect
             {
                 if(program_id == 10566 || program_id == 9054) 
@@ -2001,6 +2098,12 @@ int cpu_exec(CPUState *cpu)
                     skip_syscall(cpu, 0, 0);
                     goto skip_to_pos;
                 }             
+            }
+            else if(into_syscall == 4117) 
+            {
+                skip_syscall(cpu, 0, 0);
+                goto skip_to_pos;
+            
             }
 
 #elif defined(TARGET_ARM)
@@ -2014,49 +2117,7 @@ int cpu_exec(CPUState *cpu)
             }
 #endif
 
-
-            //zyw
-            //sysinfo_push(into_syscall, curr_state_pc);
-            /*
-            if(program_type == 1)
-            {
-                if(end_pc == 0)
-                {             
-
-                    if(into_syscall == 4004 || into_syscall == 4178 || into_syscall == 4179|| into_syscall == 4180)
-                    {
-                        if(program_id == 10853)
-                        {
-                            if_exit = 1;
-                        }
-                        else
-                        {
-                            char * write_content = (char *)malloc(a2);
-                            int ret = DECAF_read_mem(cpu, a1, a2, write_content);
-                            assert(ret!=-1);
-                            //if(!strstr(write_content, "open device"))
-                                //DECAF_printf("%d write content %s\n", into_syscall, write_content);
-                            //if(strstr(write_content, "<SCRIPT language="))
-                            //if(strstr(write_content, "HTTP/1.1") || strstr(write_content, "HTTP/1.0") || strstr(write_content, "text/html;"))
-                            if(strstr(write_content, "text/html;") || strstr(write_content, "Content-Type: text/html") || strstr(write_content, "HTTP/1.1")) 
-                            //"Content-Type: text/html" 9925 ; HTTP/1.1 10853
-                            {
-                                DECAF_printf("last program pc:%x\n", last_program_pc);
-                                DECAF_printf("%d write content %s\n", into_syscall, write_content);
-                                free(write_content);
-                                if_exit = 1;
-                            }
-                            else
-                            {
-                                free(write_content);
-                            }
-                        }       
-                    }
-                }
-                
-            }
-            */
-
+exit:
             if(if_exit){ 
 #ifdef FUZZ
                 total_len = 0;
@@ -2110,50 +2171,7 @@ skip_to_pos:
             target_ulong err = 0; //???
 
 #endif
-            /*
-            if(before_interrupt_stack > 0 && pc < 0x80000000)
-            {
-                target_ulong pgd = DECAF_getPGD(cpu);
-                if(pgd == httpd_pgd)
-                {
-                    //DECAF_printf("pc:%x, stack:%x,%x\n", pc, before_interrupt_stack, env->active_tc.gpr[29]);
-                    if(before_interrupt_stack != env->active_tc.gpr[29])
-                    {
-                        DECAF_printf("thread change:%x,%x, pc:%x\n", before_interrupt_stack, env->active_tc.gpr[29],env->active_tc.PC);
-                        if(thread_context == 1)
-                        {
-                            before_switch_stack = before_interrupt_stack;
-                            DECAF_printf("out thread:%x,%x\n", before_interrupt_stack, env->active_tc.gpr[29]);
-                            thread_context = 0;
-                        }    
-                    }
-                    if(before_switch_stack == env->active_tc.gpr[29] && thread_context == 0)
-                    {
-                        thread_context = 1;
-                        DECAF_printf("return back thread %x, pc:%x\n", before_switch_stack, env->active_tc.PC);
-                        before_switch_stack = 0;
-                    }  
-                    before_interrupt_stack = 0;
-                }
 
-            }
-            */
-            /*
-            if(pc == end_pc)
-            {
-                assert(false);
-                DECAF_printf("exit pc:%x\n", pc);
-                prepare_exit();
-                exit_status = 0;
-#ifdef FORK_OR_NOT
-                int ret_value = 0;
-                doneWork(ret_value);
-#else
-                afl_wants_cpu_to_stop = 1;
-                goto end;
-#endif
-            }
-            */
 #ifdef NEW_MAPPING
             if(afl_user_fork && handle_addr !=0) //normal execution
             {
@@ -2165,14 +2183,14 @@ skip_to_pos:
                     target_ulong addr_read = env->tlb_table[2][ind].addr_read;
                     target_ulong addr_write = env->tlb_table[2][ind].addr_write;
                     uintptr_t addend = env->tlb_table[2][ind].addend;
-                    DECAF_printf("into normal execution:%x,%x,%x, %lx\n",addr_code, addr_read, addr_write,addend);        
+                    DECAF_printf("into normal execution:%x, %x,%x,%x, %lx\n",handle_addr, addr_code, addr_read, addr_write,addend);        
                     normal_execution_tb = pc;
 
                     if((handle_addr & 0xfffff000) == addr_write)
                     {
                         into_normal_execution = 0;
                         target_ulong final_phys_addr = qemu_ram_addr_from_host(addr_write + addend);
-                        write_addr(handle_addr, final_phys_addr);
+                        write_addr(handle_addr, final_phys_addr + (handle_addr & 0xfff));
                         exit_status = 0;
                         afl_wants_cpu_to_stop = 1;
                         goto end;   
@@ -2213,23 +2231,6 @@ skip_to_pos:
                             }
                             
                         }
-                        /*
-                        if(strstr(buf, "zywzywzyw"))
-                        {
-                            auto_find_fork_times++;               
-                            if(program_id == 161160)
-                            {
-                                recv_times = 2;
-                            }
-                            if(auto_find_fork_times == recv_times)
-                            {
-                                printf("last pc:%x, read buf is %s",last_program_pc, buf);
-                                stack_mask = env->active_tc.gpr[29] & 0xfff00000;
-                                start_fork_pc = pc;            
-                            }
-                        }
-                        */
-
                         free(buf);
                     }
                     into_recv_syscall = 0;
@@ -2238,12 +2239,17 @@ skip_to_pos:
             }
             else
             {
+
                 if(start_fork_pc == 0 && pc == config_pc)
                 {
-
                     target_ulong pgd = DECAF_getPGD(cpu);
-                    //DECAF_printf("pgd %x,%x\n", pgd, httpd_pgd);
+#ifdef LMBENCH
+
+                    //if(pgd != 0 && httpd_pgd !=0) {
                     if(pgd == httpd_pgd) {
+#else
+                    if(pgd == httpd_pgd) {
+#endif
                         stack_mask = env->active_tc.gpr[29] & 0xfff00000;
                         ori_thread = cpu->thread_id;
                         DECAF_printf("start fork stack:%x\n", env->active_tc.gpr[29]);
@@ -2257,13 +2263,34 @@ skip_to_pos:
 
 
 #if defined(FUZZ) || defined(MEM_MAPPING)
+#ifdef LMBENCH
+           //if(pc == 0x400b64 && fork_times == 0) //fstat
+            //if(pc == (0x4009e4) && fork_times == 0) //select 0x400710 ||
+            //if(pc == (0x4009d0) && fork_times == 0) //select_debug //server
+            //if(pc == (0x4008c0) && fork_times == 0) //select_debug2 //server
+            //if(pc == (0x40088c) && fork_times == 0) //select_debug3 //server 0x4008e4
+            //if((pc == 0x401f90 ||  pc == 0x401f94 || pc == 0x400fdc) && fork_times == 0) //test
+            if(pc == 0x402950 && fork_times == 0) //test
+            //if(pc == 0x400850 && fork_times == 0) //pipe initialization
+            //if(pc == 0x400a30 && fork_times == 0) //read initialization
+             //if(pc == 0x40099c && fork_times == 0) //write initialization
+            //if(pc == start_fork_pc && fork_times == 0) //null openclose stat
+#else
             if(pc == start_fork_pc && fork_times == 0) //?////?????????
+#endif
             {
+
+                target_ulong pgd = DECAF_getPGD(cpu);       
 #ifdef DECAF
-                target_ulong pgd = DECAF_getPGD(cpu);
+#ifdef LMBENCH
+                if(pgd == httpd_pgd)
+                //if(pgd != 0 && httpd_pgd !=0 )
+                {
+#else
                 if(pgd == httpd_pgd)
                 {
-#endif
+#endif //lmbench
+#endif //DECAF
                     
                     CPUArchState * env = cpu->env_ptr;
                     char modname[512];
@@ -2319,6 +2346,7 @@ skip_to_pos:
                     
 #endif
                     DECAF_printf("print_mapping for %x\n", pgd);
+
                     print_mapping(modname, pgd, &base, fp);// obtain mapping
                     //memory for snapshot consistency
                     fprintf(fp, "###########\n");
@@ -2326,17 +2354,17 @@ skip_to_pos:
                     fprintf(fp, "###########\n");
 
 
-
 #ifdef SNAPSHOT_SYNC
                     int shmem_id = shmget(0, 8192, IPC_CREAT|IPC_EXCL); //0xfffffff(7 bit)  orig:131072
                     fprintf(fp, "%d\n", shmem_id);
-                    printf("accept fd:%d\n", accept_fd);
-                    fprintf(fp, "%d\n", accept_fd);
                     void * shmem_start = shmat(shmem_id, NULL,  1); 
                     memset(shmem_start, 0, 8192);
                     phys_addr_stored_bitmap = (char *)shmem_start;
                     printf("share mem id:%d, shmem_start: %x\n", shmem_id, shmem_start);
 #endif
+                    printf("accept fd:%d\n", accept_fd);
+                    fprintf(fp, "%d\n", accept_fd);
+                    fprintf(fp, "%x\n", CP0_UserLocal);
                     fclose(fp);
 #endif  //MEM_MAPPING
 
@@ -2365,20 +2393,45 @@ skip_to_pos:
                 if(pgd == httpd_pgd) {
                     int res = feed_input(cpu);
                     feed_times = 1;
-                    //DECAF_printf("feed_input :%d\n", res);
+                    if(res == 2){ 
+#ifdef FUZZ
+                        total_len = 0;
+                        buf_read_index = 0;
+#endif
+                        sys_count = 0;
+                        prepare_exit();
+                        exit_status = 0;
+#ifdef FORK_OR_NOT
+                        int ret_value = 0;
+                        doneWork(ret_value);
+#else
+                        //fork_tb_flush();
+                        into_syscall = 0;
+                        afl_wants_cpu_to_stop = 1;
+                        goto end;
+#endif               
+                    }
+
+             
                 }
 
             }
 #endif
             if(afl_user_fork && pc ==  curr_state_pc + 4 && into_syscall && before_syscall_stack == env->active_tc.gpr[29])
-            //if(afl_user_fork && pc ==  get_current_pc() + 4 && get_current_sysnum())
             {
 
 #ifdef DECAF 
                 target_ulong new_pgd = DECAF_getPGD(cpu);
                 if(new_pgd == httpd_pgd){ //user_stack_count // || get_current_pc()  == 0xb960 + tmp_libuclibc_addr
 #endif
-                
+                    /*
+                    if(afl_user_fork && a0 == accept_fd&& 
+                            (into_syscall != 4175 && into_syscall != 4003 && into_syscall != 4176 && into_syscall != 4178 && into_syscall != 4004))
+                    {
+                        printf("network syscall end:%d,%d,%d, accept_fd:%d\n", into_syscall, ret,err, accept_fd);
+                        sleep(10);
+                    }
+                    
                     if(afl_user_fork && a0 == accept_fd && 
                             (into_syscall == 4175 || into_syscall == 4003 || into_syscall == 4176))
                     {
@@ -2388,44 +2441,14 @@ skip_to_pos:
                         DECAF_printf("recv %s, len:%d\n", buff, ret);
 
                     }
-                
+                    */
+                    
                     if(print_debug){
-                        //DECAF_printf("end syscall:%d, pc:%x,ra:%x, ret:%x, err:%x, interrupt:%d\n", get_current_sysnum(), pc, ra, ret, err, cpu->interrupt_request);
                         DECAF_printf("end syscall:%d, pc:%x,stack:%x, ra:%x, ret:%x, err:%x, interrupt:%d\n", into_syscall, pc, env->active_tc.gpr[29], ra, ret, err, cpu->interrupt_request); 
-                        
-                        /*
-                        if(into_syscall == 4005 && tmptmptmp == 1)
-                        {
-                            tmptmptmp = 0;
-                            fclose(open_log_file);
-                            sleep(100);
-                        }
-                        */
-                        
-
-#ifdef TARGET_MIPS    
-                        /*   
-                        if(before_syscall_stack != env->active_tc.gpr[29]) 
-                        {
-                            before_switch_stack = before_syscall_stack;
-                            thread_context = 0;
-                            DECAF_printf("out thread\n");
-                        }
-                        if(before_switch_stack == env->active_tc.gpr[29])
-                        {
-                            thread_context = 1;
-                            before_switch_stack = 0;
-                            DECAF_printf("back thread\n");
-
-                        }  
-                        before_syscall_stack = 0;
-                        */
-
-#endif
                     }
                     before_syscall_stack = 0;
 #ifdef CAL_TIME                  
-                    //if(env->acti/ve_tc.gpr[7]!=0)  env->active_tc.gpr[2]=0xffffffff;  //NEED MODIFY for http accept, zywzyw
+                    //if(env->active_tc.gpr[7]!=0)  env->active_tc.gpr[2]=0xffffffff;  //NEED MODIFY for http accept, zywzyw
                     gettimeofday(&syscall_end, NULL);
                     time_interval = (double)syscall_end.tv_sec - syscall_begin.tv_sec + (syscall_end.tv_usec - syscall_begin.tv_usec)/1000000.0;
                     time_interval_total += time_interval;
@@ -2444,76 +2467,82 @@ skip_to_pos:
                     //sysinfo_pop();
                    
 #ifdef MEM_MAPPING
+#ifdef LMBENCH
+#else
                     
-                    if(!not_exit)
+                    //if(!not_exit && !stay_in_full)
+                    //if(!not_exit && !tmp_not_exit) //4194 4114
+                    if(!not_exit) //4194 4114
                     {
                         afl_wants_cpu_to_stop = 1; // BEFORE WRITE STATE
-                        //write_state(env);  
                         goto end;
-                    } 
-                                
-#endif
+                    }
+#endif //LMBENCH                                
+#endif //MEM_MAPPING
 
 #ifdef DECAF 
                 }
 #endif
             }
-            /* tplink httpd
-            if(afl_user_fork & pc == 0x4f3854)
+
+#ifdef LMBENCH
+            //lat_select_debug3
+            if(pc == 0x40067c && lat_select_init == 0) //init
             {
-                DECAF_printf("***********httpd pc:%x, last:%x\n", pc, last_program_pc);
-                //sleep(1);
+                lat_select_init = 1;
+                printf("*****************:%d\n",lmbench_count);
+                afl_wants_cpu_to_stop = 1;
+                goto end;   
             }
-            if(afl_user_fork && (pc >= 0x4f3788 && pc <= 0x4f3850))
+            if(pc == 0x400814) //user_fork
             {
-                DECAF_printf("********** pc:%x, last:%x\n", pc, last_program_pc);
-                //sleep(3);
+                printf("user_fork *****************:%d\n",lmbench_count);
+                afl_wants_cpu_to_stop = 1;
+                goto end;   
             }
-            if(pc == 0x525600)
+            /*
+            //lat_select_debug2
+            if(pc == 0x4006d0 && lat_select_init == 0) //init
             {
-                DECAF_printf("********** pc:%x, last:%x\n", pc, last_program_pc);
+                lat_select_init = 1;
+                printf("*****************:%d\n",lmbench_count);
+                afl_wants_cpu_to_stop = 1;
+                goto end;   
             }
-            if(pc == 0x525670)
+            //lat_select_debug
+            if(pc == 0x4007a4 && lat_select_init == 0) //init
             {
-                DECAF_printf("********** pc:%x, last:%x\n", pc, last_program_pc);
-            }
-            if(pc == 0x50d4b4)
-            {
-                DECAF_printf("********** pc:%x, last:%x\n", pc, last_program_pc);
-            }
-            if(pc == 0x503224)
-            {
-                DECAF_printf("********** pc:%x, last:%x\n", pc, last_program_pc);
+                lat_select_init = 1;
+                printf("*****************:%d\n",lmbench_count);
+                afl_wants_cpu_to_stop = 1;
+                goto end;   
             }
             */
+            /*
+            //lat_select
+            if(pc == 0x400710 && lat_select_init == 0)
+            {
+                lat_select_init = 1;
+                printf("*****************:%d\n",lmbench_count);
+                afl_wants_cpu_to_stop = 1;
+                goto end;   
+            }
+            */
+            if(pc == start_fork_pc)
+            {
+                lmbench_count++;
+                printf("*****************:%d\n",lmbench_count);
+                afl_wants_cpu_to_stop = 1;
+                goto end;   
+                //write_state(env);
+            }
+            
+#endif
 
             if(afl_user_fork) last_pc = pc;
             if(pc < 0x70000000) last_program_pc = pc;
 
 
-//zywzyw
-            /*
-            if(pc == 0x406a14)
-            {
-                char ss[4096];
-                DECAF_read_mem(cpu, a0, 4096, ss);
-                DECAF_printf("ExecuteSoapAction: %s\n", ss);
-            }
-            */
-            /*
-            if(pc == 0x4f1a58)
-            {
-                DECAF_printf("^^^^^^^^^^^^^^^httpd pc:%x\n", pc);
-                sleep(1);
-            }
-            if(pc == 0x4f1b10)
-            {
-                DECAF_printf("^^^^^^^^^^^^^^^httpd pc:%x\n", pc);
-                sleep(1);
-            }
-            */
-
-            
             if(afl_user_fork && pc == 0x80133a84)
             {
                 DECAF_printf("print_fatal_signal:%x\n",pc);
@@ -2523,25 +2552,6 @@ skip_to_pos:
                 //goto end;
 #endif
             }
-             /*
-            if(afl_user_fork && pc == 0x801b44bc)
-            {
-                target_ulong pgd = DECAF_getPGD(cpu);
-                if(pgd == httpd_pgd)
-                {
-                    DECAF_printf("wait_on_buffer pc:%x, %x\n", pc, ra);
-                } 
-            }
-            if(afl_user_fork && pc == 0x801b441c)
-            {
-                target_ulong pgd = DECAF_getPGD(cpu);
-                if(pgd == httpd_pgd)
-                {
-                    DECAF_printf("sleep_on_buffer pc:%x, %x\n", pc, ra);
-                } 
-            }
-            */
-    
             TranslationBlock *tb = tb_find(cpu, last_tb, tb_exit);
             cpu_loop_exec_tb(cpu, tb, &last_tb, &tb_exit);
             /* Try to align the host and virtual clocks
@@ -2549,7 +2559,6 @@ skip_to_pos:
         }
     }
 end:
-
     cc->cpu_exec_exit(cpu);
     rcu_read_unlock();
 
@@ -2804,6 +2813,7 @@ int read_state(CPUArchState * env, MISSING_PAGE *page, target_ulong *addr)
      {
         if(read_type == -1)
         {
+            
             res = read_content(pipe_read_fd, &type, sizeof(int));
             if(res == -1)  
             {
@@ -2821,13 +2831,14 @@ int read_state(CPUArchState * env, MISSING_PAGE *page, target_ulong *addr)
                 read_type = type;
                 return -1;
             }
+
         }
         switch (read_type){
             case 0:
             {
                 res = read_content(pipe_read_fd, page, sizeof(MISSING_PAGE));
                 int data = 0;
-                printf("read addr:%x\n", page->addr);
+                //printf("read addr:%x\n", page->addr);
                 read_type = -1;
                 return 0;
             }
@@ -2837,7 +2848,7 @@ int read_state(CPUArchState * env, MISSING_PAGE *page, target_ulong *addr)
                 res = read_content(pipe_read_fd, &cpustate, sizeof(CPUSHSTATE));
                 loadCPUShState(&cpustate, env, addr);
                 res = read_content(pipe_read_fd, addr, sizeof(target_ulong));
-                //printf("read state ok\n");
+                //printf("read state ok:%x\n", env->active_tc.PC);
                 read_type = -1; 
                 return 1;
             }
@@ -2847,8 +2858,8 @@ int read_state(CPUArchState * env, MISSING_PAGE *page, target_ulong *addr)
                 USER_MODE_TIME user_mode_time;
                 res = read_content(pipe_read_fd, &cmd, sizeof(target_ulong));
                 res = read_content(pipe_read_fd, &user_mode_time, sizeof(USER_MODE_TIME));
+                write_cmd_resp(is_loop_over);
                 if(cmd == 0x10 && is_loop_over) {
-                    is_loop_over = 0;
                     afl_user_fork = 1;
 #ifdef CAL_TIME
                     gettimeofday(&loop_begin, NULL);
@@ -2873,7 +2884,7 @@ int read_state(CPUArchState * env, MISSING_PAGE *page, target_ulong *addr)
                        reload_tlb(env);
 #endif
                     }
-
+                    is_loop_over = 0;
                 }
                 else if(cmd == 0x20  && !is_loop_over) 
                 {   
@@ -2898,6 +2909,8 @@ int read_state(CPUArchState * env, MISSING_PAGE *page, target_ulong *addr)
 #ifdef CAL_TIME
                     gettimeofday(&restore_end, NULL);
                     double restore_time = (double)restore_end.tv_sec - restore_begin.tv_sec + (restore_end.tv_usec - restore_begin.tv_usec)/1000000.0;
+                    DECAF_printf("cmd is %x #######################################\n", cmd);
+                
                     if(print_debug)
                     {
                         DECAF_printf("----------------------------------------------------------\n");
@@ -2933,7 +2946,7 @@ int read_state(CPUArchState * env, MISSING_PAGE *page, target_ulong *addr)
                 else
                 {
                     printf("one loop not over, cmd:%x, is_loop_over:%d\n", cmd, is_loop_over);
-                    exit(32);
+                    //exit(32);
                 }
                 read_type = -1;
                 return 2;
@@ -2952,18 +2965,17 @@ int read_state(CPUArchState * env, MISSING_PAGE *page, target_ulong *addr)
     }  
 }
 
-
-
-int write_addr(uintptr_t ori_addr, uintptr_t addr)  
-{  
-    int res = 0;  
+int write_cmd_resp(int loop_is_over)
+{
+    int res = 0; 
     if(pipe_write_fd == -1){
         const char *fifo_name_full[256];
-        getconfig("write_pipename", fifo_name_full);  
+        getconfig("write_pipename", fifo_name_full);  ;
         assert(strlen(fifo_name_full)>0);
-        const int open_mode_full = O_WRONLY;  
+        const int open_mode_full = O_WRONLY; 
         if(access(fifo_name_full, F_OK) == -1)  
         {  
+            printf("write addr mkfifo\n");
             res = mkfifo(fifo_name_full, 0777);  
             if(res != 0)  
             {  
@@ -2971,10 +2983,48 @@ int write_addr(uintptr_t ori_addr, uintptr_t addr)
                 exit(EXIT_FAILURE);  
             }  
         } 
-        pipe_write_fd = open(fifo_name_full, open_mode_full); 
-        printf("open pipe write:%d\n", pipe_write_fd);   
+        pipe_write_fd = open(fifo_name_full, open_mode_full);  
     }
-   
+    if(pipe_write_fd != -1)  
+    {  
+        int bytes_read = 0;  
+        res = write(pipe_write_fd, &loop_is_over, sizeof(int));  
+        if(res == -1)  
+        {  
+            printf("Write addr error on pipe\n");  
+            sleep(1000);
+            exit(EXIT_FAILURE);  
+        }  
+    }  
+    else{
+        printf("write addr failure\n");
+        sleep(1000);  
+        exit(EXIT_FAILURE);  
+    }
+    return 1;
+}
+
+
+int write_addr(uintptr_t ori_addr, uintptr_t addr)  
+{  
+    int res = 0;  
+    if(pipe_write_fd == -1){
+        const char *fifo_name_full[256];
+        getconfig("write_pipename", fifo_name_full);  ;
+        assert(strlen(fifo_name_full)>0);
+        const int open_mode_full = O_WRONLY; 
+        if(access(fifo_name_full, F_OK) == -1)  
+        {  
+            printf("write addr mkfifo\n");
+            res = mkfifo(fifo_name_full, 0777);  
+            if(res != 0)  
+            {  
+                printf("Could not create fifo %s\n", fifo_name_full);  
+                exit(EXIT_FAILURE);  
+            }  
+        } 
+        pipe_write_fd = open(fifo_name_full, open_mode_full);  
+    }
     if(pipe_write_fd != -1)  
     {  
         int bytes_read = 0;  
@@ -2984,7 +3034,7 @@ int write_addr(uintptr_t ori_addr, uintptr_t addr)
             printf("Write addr error on pipe\n");  
             exit(EXIT_FAILURE);  
         }  
-        printf("write addr ok:%lx, %lx\n",ori_addr, addr);
+        //printf("write addr ok:%lx, %lx\n",ori_addr, addr);
     }  
     else{
         printf("write addr failure\n");  
@@ -3034,9 +3084,90 @@ int write_state(CPUArchState * env)
     return 1;
 } 
 
+MISSING_PAGE handle_page;
+int ask_addr = 0;
+uintptr_t res_addr;
+int tcg_handle_addr = 0;
+void *qemu_handle_addr_thread_fn(void *arg)
+{
+    CPUState *cpu = arg;
+    CPUArchState * env = cpu->env_ptr;
+    int status, child_pid;
+    target_ulong addr = handle_page.addr;
+    MMUAccessType access_type = handle_page.prot;        
+    int mmu_idx = handle_page.mmu_idx; 
+    current_cpu = cpu;
+
+    SyncClocks sc = { 0 };
+    init_delay_params(&sc, cpu);
+    cpu->interrupt_request = 0;// need???????????????
+    cpu->exception_index = -1;
+    int ret = mips_cpu_handle_mmu_fault(cpu, addr, access_type, mmu_idx);
+    int index = (addr >> 12) & (256 - 1);
+    target_ulong labelpc;
+    target_ulong orig_pc = env->active_tc.PC;
+    void *t = env->tlb_table[mmu_idx][index].addend;
+    if (qemu_mutex_iothread_locked()) {
+        qemu_mutex_unlock_iothread();
+    }
+    while(ret == 1)
+    {
+
+        if (sigsetjmp(cpu->jmp_env, 0) != 0) {
+            cpu->can_do_io = 1;
+            tb_lock_reset();
+            if (qemu_mutex_iothread_locked()) {
+                qemu_mutex_unlock_iothread();
+            }
+        }
+
+        //printf("ret:%x, exception:%d, interupt:%d, pc:%x\n", ret, cpu->exception_index, cpu->interrupt_request, env->active_tc.PC);
+        int ret_excep;
+        while(true){
+            while (!cpu_handle_exception(cpu, &ret_excep)) {
+                TranslationBlock *last_tb = NULL;
+                int tb_exit = 0; 
+                while (!cpu_handle_interrupt(cpu, &last_tb)) {
+                     if(env->active_tc.PC < 0x80000000) {
+                        labelpc = env->active_tc.PC;     
+                        if(orig_pc == labelpc)
+                        {
+                            goto label;
+                        }                     
+                        
+                    }
+                    TranslationBlock *tb = tb_find(cpu, last_tb, tb_exit); 
+                    cpu_loop_exec_tb(cpu, tb, &last_tb, &tb_exit);
+                    if(mem_mapping_exit)
+                    {
+                        target_ulong pgd = DECAF_getPGD(cpu);
+                        if(pgd == httpd_pgd)
+                        {
+                            mem_mapping_exit = 0;
+                            printf("handle addr error\n");
+                            afl_wants_cpu_to_stop = 1; // BEFORE WRITE STATE
+                            goto fail;
+                        }
+                    }
+                    align_clocks(&sc, cpu);
+                }
+            } 
+            //printf("handler addr out of exception loop:%d,%d,%x\n", cpu->interrupt_request, cpu->exception_index, env->active_tc.PC);
+        }
+label:      
+        //printf("label ret:%d,%x\n", ret, addr); 
+        ret = mips_cpu_handle_mmu_fault(cpu, addr, access_type, mmu_idx);
+        t = env->tlb_table[mmu_idx][index].addend;
+    }
+    res_addr = ((uintptr_t)addr + t);
+    return;
+fail:
+    res_addr = 0;
+}
+
 
 extern CPUState *restart_cpu;
-
+extern void out_of_cpu_exec(CPUState *cpu);
 void handlePiperead(void *ctx)
 {
 
@@ -3050,6 +3181,7 @@ void handlePiperead(void *ctx)
     MISSING_PAGE page;
 
     int res = read_state(env, &page, &handle_addr);
+    //printf("********read error addr:%x, %d\n", handle_addr, res);
 
     
 // read addr
@@ -3060,104 +3192,21 @@ void handlePiperead(void *ctx)
     }
     if(res == 0)
     {
+        ask_addr = page.addr;
+        handle_page.addr = page.addr;
+        handle_page.prot = page.prot;        
+        handle_page.mmu_idx = page.mmu_idx; 
+        tcg_handle_addr = 1;
 
-#ifdef TARGET_MIPS
-        //handle_addr_or_state = 1;
-        int status, child_pid;
-        target_ulong addr = page.addr;
-        MMUAccessType access_type = page.prot;        
-        int mmu_idx = page.mmu_idx; 
-        current_cpu = cpu;
-        //target_ulong pgd = DECAF_getPGD(cpu);
-
-        //rcu_read_lock();  
-      
-        //printf("addr:%x, access_type:%d, mmu_idx:%d\n", addr, access_type, mmu_idx);
-
-        SyncClocks sc = { 0 };
-        init_delay_params(&sc, cpu);
-        cpu->interrupt_request = 0;// need???????????????
-        //cpu->exception_index = -1;
-        
-        int ret = mips_cpu_handle_mmu_fault(cpu, addr, access_type, mmu_idx);
-        int index = (addr >> 12) & (256 - 1);
-        target_ulong labelpc;
-        target_ulong orig_pc = env->active_tc.PC;
-        void *t = env->tlb_table[mmu_idx][index].addend;
-
-        if (qemu_mutex_iothread_locked()) {
-            qemu_mutex_unlock_iothread();
-        }
-
-        while(ret == 1)
-        {
-            /*
-            if (sigsetjmp(cpu->jmp_env, 0) != 0) {
-                printf("long jmp here:%d\n", cpu->exception_index);
-                cpu->can_do_io = 1;
-                tb_lock_reset();
-                if (qemu_mutex_iothread_locked()) {
-                    qemu_mutex_unlock_iothread();
-                }
-            }
-            */
-
-            //printf("ret:%x, exception:%d, interupt:%d, pc:%x\n", ret, cpu->exception_index, cpu->interrupt_request, env->active_tc.PC);
-            int ret_excep;
-            //printf("step into kernel to handle address:%x,%x, exception:%d, interrupt:%d\n", addr, pgd, cpu->exception_index, cpu->interrupt_request);
-            while(true){
-                while (!cpu_handle_exception(cpu, &ret_excep)) {
-                    TranslationBlock *last_tb = NULL;
-                    int tb_exit = 0; 
-                    while (!cpu_handle_interrupt(cpu, &last_tb)) {
-                         if(env->active_tc.PC < 0x80000000) {
-                            //printf("out pc:%x\n", env->active_tc.PC);
-                            labelpc = env->active_tc.PC;     
-                            if(orig_pc == labelpc)
-                            {
-                                goto label;
-                            }                      
-                        }
-                        TranslationBlock *tb = tb_find(cpu, last_tb, tb_exit); 
-                        cpu_loop_exec_tb(cpu, tb, &last_tb, &tb_exit);
-                        align_clocks(&sc, cpu);
-                    }
-                }
-                //printf("handler addr out of exception loop:%d,%d,%x\n", cpu->interrupt_request, ret_excep, env->active_tc.PC);
-                //siglongjmp(cpu->jmp_env, 0);
-            }
-label:          
-            ret = mips_cpu_handle_mmu_fault(cpu, addr, access_type, mmu_idx);
-            t = env->tlb_table[mmu_idx][index].addend;
-        }
-
-        if((uintptr_t)t & 0xffffffff00000000 == 0xffffffff00000000) {printf("addend not aligned:%lx\n",t); sleep(100);exit(32);} 
-        void *p = (void *)((uintptr_t)addr + t); //addend will be modified?  so ,use t here
-        write_addr(addr, p);
-        //handle_addr_or_state = 0;
-        qemu_mutex_lock_iothread();     
-#endif
+        restart();
     }
     else if(res == 1){
 
-/*        
-        //handle_addr_or_state = 2;
-        qemu_mutex_lock_iothread();
-        afl_wants_cpu_to_stop = 0;
-        qemu_cond_broadcast(cpu->halt_cond);
-        syscall_request = 1;
-        //DECAF_printf("@@@@@@@@ enable ticks\n");
-        //cpu_enable_ticks();
-#ifdef TARGET_MIPS
-        printf("read state:%x, %x, %x, %x, %x\n", env->active_tc.PC, handle_addr, env->CP0_EPC, env->CP0_Cause, env->CP0_Status);
-#elif defined(TARGET_ARM)
-        printf("read state:%x, %x\n", env->regs[15], handle_addr);
-#endif
-*/
         restart();
 
     }
 
 }
+
 
 #endif

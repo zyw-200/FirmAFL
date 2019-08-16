@@ -38,6 +38,15 @@
 
 #include "afl-qemu-cpu-inl.h"
 
+
+//#define LMBENCH
+extern int curr_syscall;
+int lmbench_count = 0;
+int lmbench_times = 0;
+struct timeval lmbench_start;
+struct timeval lmbench_end;
+double lmbench_ave = 0.0;
+double lmbench_total = 0.0;
 /* -icount align implementation. */
 
 typedef struct SyncClocks {
@@ -635,6 +644,8 @@ static inline void cpu_loop_exec_tb(CPUState *cpu, TranslationBlock *tb,
 #endif
 }
 
+int transfer_flag = 0 ;
+extern void* g2h_helper(target_ulong x);
 /* main execution loop */
 target_ulong last_pc = 0;
 target_ulong last_tb_pc = 0;
@@ -698,55 +709,131 @@ int cpu_exec(CPUState *cpu)
             AFL_QEMU_CPU_SNIPPET2;
 #endif
             target_ulong pc = env->active_tc.PC;
-            if(env->active_tc.PC  == 0 )
-            {
-                printf("last pc:%x,tb:%x,invalid:%d\n", last_pc, last_tb_pc, invalid_v);
-            }
 
+#ifdef LMBENCH
             /*
-            if(env->active_tc.PC < 0x70000000)
+            if(env->active_tc.PC == 0x401fec || env->active_tc.PC == 0x4007f0) //init 0x400954
             {
-                printf("$$$$$$$$$$ pc :%x\n", env->active_tc.PC);
+                printf("fork end pc:%x,pid:%d\n", env->active_tc.PC, getpid());
+                transfer_flag = 1; 
             }
             
-            else if(env->active_tc.PC < 0x80000000 && env->active_tc.PC > libuclibc_addr && env->active_tc.PC < libuclibc_addr + 0x60000)
+            if(env->active_tc.PC == 0x4016b0 || env->active_tc.PC == 0x4016b4) //server
             {
-                printf("lib pc:%x, a3:%x, ra:%x\n", env->active_tc.PC - libuclibc_addr, env->active_tc.gpr[7], env->active_tc.gpr[31] - libuclibc_addr);
-            }
-            if(env->active_tc.PC == 0X401d80)
-            {
-                int addr_value;
-                cpu_memory_rw_debug(cpu, 0x442270, &addr_value, 4, 0);
-                printf("next addr:%x\n", addr_value);
-            }
-            
-            int base = 0x77196000;
-            if(env->active_tc.PC < 0x80000000)
-                printf("pc:%x\n", env->active_tc.PC - base);
-            if(env->active_tc.PC == base + 0x520a0)
-            {
-                int environ_addr;
-                int libuclibc_addr = base;
-                int environ_offset = libuclibc_addr + 0x72bf0;
-                environ_addr = cpu_memory_rw_debug(cpu, environ_offset, &environ_addr, 4, 0);
-                printf("tmp environ_addr:%x\n", environ_addr);
-                printf("pc:%x, environ:%x, gp:%x, sp:%x\n", 0x520bc, env->active_tc.gpr[2], env->active_tc.gpr[28], env->active_tc.gpr[29]);
-                sleep(1000);
+                printf("doit end pc:%x,pid:%d\n", env->active_tc.PC, getpid()); 
+                transfer_flag = 1;           
             }
             */
+            /*
+            //select_debug3
+            if(env->active_tc.PC == 0x4007ec || env->active_tc.PC == 0x4007f0) //init 0x400954
+            {
+                printf("init end pc:%x,pid:%d\n", env->active_tc.PC, getpid());
+                transfer_flag = 1; 
+            }
+            if(env->active_tc.PC == 0x4009b0 || env->active_tc.PC == 0x400af4) //server
+            {
+                printf("server end pc:%x,pid:%d\n", env->active_tc.PC, getpid()); 
+                transfer_flag = 1;           
+            }
+            if(env->active_tc.PC == 0x40087c || env->active_tc.PC == 0x400eb0) //user_fork
+            {
+                printf("user fork end pc:%x,pid:%d\n", env->active_tc.PC, getpid()); 
+                transfer_flag = 1;           
+            }
+            */
+            /*
+            //select_debug
+            if(env->active_tc.PC == 0x400840) //init 0x400954
+            {
+                printf("select pc:%x\n", env->active_tc.PC);
+                transfer_flag = 1; 
+            }
+            if(env->active_tc.PC == 0x400ad0) //server
+            {
+                printf("select pc:%x\n", env->active_tc.PC); 
+                transfer_flag = 1;           
+            }
+            
+            //select_debug
+            if(env->active_tc.PC == 0x400950) //init 0x400954
+            {
+                printf("select pc:%x\n", env->active_tc.PC);
+                transfer_flag = 1; 
+            }
+            if(env->active_tc.PC == 0x400be0) //server
+            {
+                printf("select pc:%x\n", env->active_tc.PC); 
+                transfer_flag = 1;           
+            }
+            */
+            //select
+            /*
+            if(env->active_tc.PC == 0x400878) //init
+            {
+                printf("select pc:%x\n", env->active_tc.PC);
+                transfer_flag = 1; 
+            }
+            if(env->active_tc.PC == 0x400b38) //server
+            {
+                printf("select pc:%x\n", env->active_tc.PC); 
+                transfer_flag = 1;           
+            }
+            */
+            //read  write fstat
+            /*
+            if(env->active_tc.PC == 0x428418)
+            {
+                printf("open pc:%x\n", env->active_tc.PC); 
+                goto bench1;
+            }
+            */
+            
+
+            
+            //lat_pipe
+            /*
+            if(env->active_tc.PC == 0x4009e0) //not 0x4009dc
+            {
+                printf("pipe pc:%x\n", env->active_tc.PC); 
+                goto bench1;
+            }
+            */
+
+            //target_ulong sp = env->active_tc.gpr[29]; //fstat
+            //int *real_s0 = g2h_helper(sp+0xa8); //fstat
+            //if(env->active_tc.PC == 0x428214 && *real_s0 == 1) //fstat
+            //if(env->active_tc.PC == 0x428214 && env->active_tc.gpr[16] == 1)
+            //if(env->active_tc.PC == 0x4285e8 && env->active_tc.gpr[16] == 1) //read
+            //if(env->active_tc.PC == 0x4286d8 && env->active_tc.gpr[16] == 1) //write
+            //if(env->active_tc.PC == 0x428144 && env->active_tc.gpr[17] == 1) // stat
+            //if(env->active_tc.PC == 0x428508 && env->active_tc.gpr[16] == 1) //openclose
+            //if(env->active_tc.PC ==  0x4197fc && curr_syscall == 142 && env->active_tc.gpr[18] == 1) //lat_select_debug
+            //if(env->active_tc.PC ==  0x4196ec && curr_syscall == 142 && env->active_tc.gpr[17] == 1) //lat_select_debug 2
+            if(env->active_tc.PC ==  0x41971c && curr_syscall == 142 && env->active_tc.gpr[17] == 1) //lat_select_debug 2
+            //if(env->active_tc.PC == 0x429b08 && env->active_tc.gpr[18] == 1) //lat_select
+           // if(env->active_tc.PC == 0x427f28 && env->active_tc.gpr[16] == 1) //lat_pipe
+            {
+                printf("pc:%x:pid:%d\n", env->active_tc.PC, getpid()); 
+                transfer_flag = 1;
+            }
+            if(transfer_flag == 1)
+            {
+                transfer_flag = 0;
+                lmbench_count++;
+                gettimeofday(&lmbench_end, NULL);
+                double inter =  (double)(lmbench_end.tv_sec - lmbench_start.tv_sec)*1000000.0 + lmbench_end.tv_usec - lmbench_start.tv_usec;
+                printf("?????????????????/end:%d, time:%f\n", lmbench_count, inter/lmbench_times);
+                lmbench_total += inter/lmbench_times;
+                write_state(env, 0);
+                read_state(env->active_tc.PC, env);
+                lmbench_times = env->active_tc.gpr[4];
+                printf("times :%d\n", lmbench_times);
+                gettimeofday(&lmbench_start, NULL);
+            }
+#endif //lmbench
            
-
             TranslationBlock *tb = tb_find(cpu, last_tb, tb_exit);
-            
-            if(pc < 0x80000000)
-            {
-                last_pc = pc;
-            }
-            /*
-            if(pc < 0x70000000)
-                printf("pc:%x\n", pc); 
-
-            */
             cpu_loop_exec_tb(cpu, tb, &last_tb, &tb_exit);
             /* Try to align the host and virtual clocks
                if the guest is in advance */

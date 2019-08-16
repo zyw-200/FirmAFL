@@ -601,11 +601,22 @@ static void QEMU_NORETURN dump_core_and_abort(int target_sig)
     abort();
 }
 
+extern int program_id;
 /* queue a signal so that it will be send to the virtual CPU as soon
    as possible */
 int queue_signal(CPUArchState *env, int sig, int si_type,
                  target_siginfo_t *info)
 {
+    //zyw
+    printf("queue_signal:%d,pid:%d\n\n\n\n\n\n", sig,getpid());
+    if(program_id == 129780 || program_id == 129781)
+    {
+        remove_tmp_files();
+    } 
+
+    //normal_exit(0);
+    //exit(0);
+
     CPUState *cpu = ENV_GET_CPU(env);
     TaskState *ts = cpu->opaque;
 

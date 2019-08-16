@@ -39,15 +39,29 @@
 
 #include "zyw_config.h"
 
+//g2h(x) ((void *)((unsigned long)(target_ulong)(x) + guest_base))
+
+void* g2h_helper(target_ulong x)
+{
+    return g2h(x);
+}
+
+static void handler_s_ill(int sig_num, siginfo_t *si, void *ptr)
+{
+    printf("meet illegal instruction\n");
+    normal_exit(0);
+
+}
 
 
+extern target_ulong last_pc;
 extern pthread_mutex_t *p_mutex_shared;
 int optimization_level = 0;
 
 int program_id = 0;
 int first_syscall = 0;
 int accept_fd = 0;
-
+int CP0_UserLocal = 0;
 
 char * mem_file = "mem_file";
 int parent_pid = 0;
@@ -80,6 +94,52 @@ static void write_ptr(CPUState* cpu, int vaddr, int pptr_addr)
 
 }
 
+char program_analysis[256];
+char * aflFile;
+struct timeval handle_addr_start;
+struct timeval handle_addr_end;
+struct timeval handle_state_start;
+struct timeval handle_state_end;
+struct timeval handle_syscall_start;
+struct timeval handle_syscall_end;
+struct timeval store_page_start;
+struct timeval store_page_end;
+struct timeval restore_page_start;
+struct timeval restore_page_end;
+
+double handle_addr_total = 0.0;
+double handle_state_total = 0.0;
+double handle_syscall_total = 0.0;
+double store_page_total = 0.0;
+double restore_page_total = 0.0;
+int store_count = 0;
+int user_syscall_count = 0;
+
+void getconfig(char *keywords, char *res)
+{
+    FILE *fp = fopen("FirmAFL_config", "r");
+    char StrLine[256];
+    assert(fp);
+    while (!feof(fp)) 
+    { 
+        fgets(StrLine,256,fp);
+        char * key = strtok(StrLine, "=");
+        char * value = strtok(NULL, "=");
+        int val_len = strlen(value);
+        if(value[val_len-1] == '\n')
+        {
+            value[val_len-1] = '\0';
+        } 
+        if(strcmp(keywords, key) == 0)
+        {
+            strcpy(res, value);
+            break;
+        }
+    }
+    fclose(fp); 
+}
+
+
 #ifdef MEM_MAPPING
 #include <sys/shm.h>
 #define VIRTUAL_SPA 500
@@ -106,23 +166,7 @@ int vir_phy_index;
 
 int pipe_read_fd = -1;
 int pipe_write_fd = -1;
-struct timeval handle_addr_start;
-struct timeval handle_addr_end;
-struct timeval handle_state_start;
-struct timeval handle_state_end;
-struct timeval handle_syscall_start;
-struct timeval handle_syscall_end;
-struct timeval store_page_start;
-struct timeval store_page_end;
-struct timeval restore_page_start;
-struct timeval restore_page_end;
-double handle_addr_total = 0.0;
-double handle_state_total = 0.0;
-double handle_syscall_total = 0.0;
-double store_page_total = 0.0;
-double restore_page_total = 0.0;
-int store_count = 0;
-int user_syscall_count = 0;
+
 
 extern void * snapshot_shmem_start;
 extern void * snapshot_shmem_pt;
@@ -181,11 +225,11 @@ void syscall_addr_check(int addr, int len, int syscall)
         uintptr_t *host_addr = g2h(page);
         if(syscall == 3)
         {
-            *host_addr = 0;
+            uintptr_t a = *host_addr;
         }
         else if(syscall == 4)
         {
-            uintptr_t a = *host_addr;
+            *host_addr = 0;
         }
         else
         {
@@ -194,31 +238,9 @@ void syscall_addr_check(int addr, int len, int syscall)
     }
 }
 
-char program_analysis[256];
 
-void getconfig(char *keywords, char *res)
-{
-    FILE *fp = fopen("FirmAFL_config", "r");
-    char StrLine[256];
-    assert(fp);
-    while (!feof(fp)) 
-    { 
-        fgets(StrLine,256,fp);
-        char * key = strtok(StrLine, "=");
-        char * value = strtok(NULL, "=");
-        int val_len = strlen(value);
-        if(value[val_len-1] == '\n')
-        {
-            value[val_len-1] = '\0';
-        } 
-        if(strcmp(keywords, key) == 0)
-        {
-            strcpy(res, value);
-            break;
-        }
-    }
-    fclose(fp); 
-}
+
+
 
 //#########################
 MISSING_PAGE special_page;
@@ -283,9 +305,6 @@ void feed_input(CPUState * cpu){}
 #ifdef FEED_INPUT
 
 
-
-
-char * aflFile;
 target_ulong getWork(char * ptr, target_ulong sz)
 {
     target_ulong retsz;
@@ -447,6 +466,19 @@ int check_http_header(char * input) // if all are readable charater before =
         }
 
     }
+    else if(program_id == 161161)
+    {
+        if(strncmp(input, "POST /apply.cgi HTTP/1.1\r\n", 26) == 0)
+        {
+            return 1;
+        }
+        else
+        {
+            return 0;
+        }
+
+    }
+
     return 1;
 }
 
@@ -470,12 +502,12 @@ void feed_input(CPUState * cpu)
         }
         */
 //
-        printf("content:%s\n\n\n", g2h(content_addr));
+        //printf("content:%s\n\n\n", g2h(content_addr));
         CPUArchState *env = cpu->env_ptr;
         char input_buf[MAX_LEN];
         int get_len = getWork(input_buf, MAX_LEN);
 
-        printf("check input\n");
+        printf("check input:%d\n", getpid());
         if(check_input(input_buf, 1) == 0)
         {
             normal_exit(0);
@@ -512,10 +544,9 @@ void feed_input(CPUState * cpu)
         total_len = getWork(recv_buf, 4096);
         if(check_http_header(recv_buf) == 0)
         {
-            printf("recv_buf:%s\n", recv_buf);
+            //printf("recv_buf:%s\n", recv_buf);
             normal_exit(0);
         }
-
     }
     else if (strcmp(feed_type, "FEED_CMD") == 0)
     {
@@ -572,6 +603,10 @@ int if_memory_rw(int page_addr, int rw)
         return 0;
     int virt_p = page_addr &0x0fffffff;
     */
+    if(page_addr > 0x7fffffff || page_addr < 0)
+    {
+        return 0;
+    }
     int page_addr_high = page_addr & 0xff000000;
     if(page_addr_high == 0x7f000000)
     {
@@ -2732,7 +2767,8 @@ static int do_store_exclusive(CPUMIPSState *env)
     int d;
 
     addr = env->lladdr;
-    page_addr = addr & TARGET_PAGE_MASK;
+    //page_addr = addr & TARGET_PAGE_MASK; //zyw
+    page_addr = addr;
     start_exclusive();
     mmap_lock();
     flags = page_get_flags(page_addr);
@@ -2748,7 +2784,8 @@ static int do_store_exclusive(CPUMIPSState *env)
         }
         if (!segv) {
 #ifdef MEM_MAPPING
-            handle_store(page_addr);
+            handle_store(env, env->active_tc.PC, page_addr);
+            //printf("handle store finish:%x\n", addr);
 #endif
             if (val != env->llval) {
                 env->active_tc.gpr[reg] = 0;
@@ -2757,6 +2794,7 @@ static int do_store_exclusive(CPUMIPSState *env)
                     segv = put_user_u64(env->llnewval, addr);
                 } else {
                     segv = put_user_u32(env->llnewval, addr);
+                    //printf("put addr:%x,segv:%d\n", addr, segv);
                 }
                 if (!segv) {
                     env->active_tc.gpr[reg] = 1;
@@ -2804,41 +2842,204 @@ static int do_break(CPUMIPSState *env, target_siginfo_t *info,
     return ret;
 }
 
+#ifdef MEM_MAPPING
+int exception_count = 0;
+
+void exception_exit(int syscall_num)
+{
+    exception_count++;
+    printf("exception count:%d\n", exception_count);
+    gettimeofday(&restore_page_start, NULL);
+#ifdef STORE_PAGE_FUNC
+    printf("exception restore_page start\n");
+    restore_page_exception();  //zyw
+    printf("exception restore_page end\n");
+#endif
+    gettimeofday(&restore_page_end, NULL);
+    restore_page_total += (double)restore_page_end.tv_sec - restore_page_start.tv_sec + (restore_page_end.tv_usec - restore_page_start.tv_usec)/1000000.0;
+    /*
+    if(program_id == 129780 || program_id == 129781)
+    {
+        remove_tmp_files();
+    }
+    */
+    printf("gettimeofday over\n");
+    if( remove("/var/tmp") != 0 )
+    {
+        printf("remove var/tmp error\n");
+    }
+    if(mkdir("var/tmp", 0777)==-1)  
+    {   
+        printf("mkdir  var/tmp error\n");      
+    }
+    printf("clean var/tmp over\n");
+    if(program_id == 129781)
+    {
+        copy_file("/var/config/net.conf_ori", "/var/config/net.conf");
+    }     
+    printf("copy over\n");
+    int cmd = 0x20;// restore page
+    USER_MODE_TIME user_mode_time;
+    user_mode_time.handle_state_time = handle_state_total;
+    user_mode_time.handle_addr_time = handle_addr_total;
+    user_mode_time.handle_syscall_time = handle_syscall_total;
+    user_mode_time.store_page_time = store_page_total;
+    user_mode_time.restore_page_time = restore_page_total;
+    user_mode_time.user_syscall_count = user_syscall_count;
+    user_mode_time.store_count = store_count;
+    printf("exit status:%d\n\n\n\n\n\n", syscall_num);
+    //write_aflcmd(cmd, &user_mode_time);
+    write_aflcmd_complete(cmd, &user_mode_time);
+    if(print_debug)
+    {
+        printf("exit syscall:%d\n\n\n\n\n\n", syscall_num);
+    }
+}
+
 void normal_exit(int syscall_num)
 {
     gettimeofday(&restore_page_start, NULL);
 #ifdef STORE_PAGE_FUNC
-        restore_page();  //zyw
-    #endif
-        gettimeofday(&restore_page_end, NULL);
-        restore_page_total += (double)restore_page_end.tv_sec - restore_page_start.tv_sec + (restore_page_end.tv_usec - restore_page_start.tv_usec)/1000000.0;
+    restore_page();  //zyw
+#endif
+    gettimeofday(&restore_page_end, NULL);
+    restore_page_total += (double)restore_page_end.tv_sec - restore_page_start.tv_sec + (restore_page_end.tv_usec - restore_page_start.tv_usec)/1000000.0;
+    if(program_id == 129780 || program_id == 129781)
+    {
+        remove_tmp_files();
+    }
+    if(program_id == 129781)
+    {
+        copy_file("/var/config/net.conf_ori", "/var/config/net.conf");
+    }     
+    
+    int cmd = 0x20;// restore page
+    USER_MODE_TIME user_mode_time;
+    user_mode_time.handle_state_time = handle_state_total;
+    user_mode_time.handle_addr_time = handle_addr_total;
+    user_mode_time.handle_syscall_time = handle_syscall_total;
+    user_mode_time.store_page_time = store_page_total;
+    user_mode_time.restore_page_time = restore_page_total;
+    user_mode_time.user_syscall_count = user_syscall_count;
+    user_mode_time.store_count = store_count;
+    printf("exit syscall:%d\n\n\n\n\n\n", syscall_num);
+    //write_aflcmd(cmd, &user_mode_time);
+    write_aflcmd_complete(cmd, &user_mode_time);
+    if(print_debug)
+    {
+        printf("exit syscall:%d\n\n\n\n\n\n", syscall_num);
+    }
 
-        int cmd = 0x20;// restore page
-        USER_MODE_TIME user_mode_time;
-        user_mode_time.handle_state_time = handle_state_total;
-        user_mode_time.handle_addr_time = handle_addr_total;
-        user_mode_time.handle_syscall_time = handle_syscall_total;
-        user_mode_time.store_page_time = store_page_total;
-        user_mode_time.restore_page_time = restore_page_total;
-        user_mode_time.user_syscall_count = user_syscall_count;
-        user_mode_time.store_count = store_count;
-        write_aflcmd(cmd, &user_mode_time);
-        //if(print_debug)
-        //{
-            printf("exit syscall:%d\n\n\n\n\n\n", syscall_num);
-        //}
-//zyw
+    exit(0);
+}
+
+void bug_exit(target_ulong addr)
+{
+    gettimeofday(&restore_page_start, NULL);
+#ifdef STORE_PAGE_FUNC
+    restore_page();  //zyw
+#endif
+    gettimeofday(&restore_page_end, NULL);
+    restore_page_total += (double)restore_page_end.tv_sec - restore_page_start.tv_sec + (restore_page_end.tv_usec - restore_page_start.tv_usec)/1000000.0;
+
+    if(program_id == 129780 || program_id == 129781)
+    {
+        remove_tmp_files();
+    }
+    if(program_id == 129781)
+    {
+        copy_file("/var/config/net.conf_ori", "/var/config/net.conf");
+    }   
+    int cmd = 0x20;// restore page
+    USER_MODE_TIME user_mode_time;
+    user_mode_time.handle_state_time = handle_state_total;
+    user_mode_time.handle_addr_time = handle_addr_total;
+    user_mode_time.handle_syscall_time = handle_syscall_total;
+    user_mode_time.store_page_time = store_page_total;
+    user_mode_time.restore_page_time = restore_page_total;
+    user_mode_time.user_syscall_count = user_syscall_count;
+    user_mode_time.store_count = store_count;
+    //write_aflcmd(cmd, &user_mode_time);
+    write_aflcmd_complete(cmd, &user_mode_time);
+    /*
+    if(pipe_read_fd != -1)
+    {
+        close(pipe_read_fd);
+    }
+    if(pipe_write_fd != -1)
+    {
+        close(pipe_write_fd);
+    }
+    */
+    if(addr == 0)
+    {
+        printf("page addr 0\n");
         exit(0);
+    }
+    else
+    {
+#ifdef TARGET_MIPS
+        CPUArchState *env = first_cpu->env_ptr;
+        printf("exit with error:%x\n", addr);
+        //printf("last pc:%x,CP0_UserLocal:%x\n", last_pc,env->active_tc.CP0_UserLocal);
+#endif
+        exit(32);
+    }
+}
+#endif
+
+int tmp_file_count = 0;
+char tmp_file_names[200][100];
+void add_tmp_file(char * filename)
+{   
+    //printf("filename:%s\n", filename);
+    if(strstr(filename,"/tmp/tmpf"))
+    {
+        //printf("add tmp file:%s\n", filename);
+        strncpy(tmp_file_names[tmp_file_count], filename, 100);
+        tmp_file_count++;
+    }   
+}
+
+
+int copy_file(char *ori, char *dst)
+{
+
+    FILE *in,*out;
+    char buff[1024];
+    int len;
+
+    in = fopen(ori,"r+");
+    out = fopen(dst,"w+");
+    //printf("$$$$$$copy file:%d,%d\n",in, out);
+ 
+    while(len = fread(buff,1,sizeof(buff),in))
+    {
+        fwrite(buff,1,len,out);
+    }
+    fclose(in);
+    fclose(out);
+    return 0;
+}
+
+void remove_tmp_files()
+{
+    //4010 unlink remove file
+    for(int i=0; i<tmp_file_count; i++)
+    {
+        //printf("remove file:%s\n", tmp_file_names[i]);
+        remove(tmp_file_names[i]);
+    }
 }
 
 int file_syscall_fd = -1;
 int local_or_not = 0;
 int count_142 = 0;
-
-int syscall_local_or_not(int syscall_num, CPUArchState *env)
-{
-
-}
+int count_20 = 0;
+int feed_input_times = 0;
+int last_syscall = 0;
+int count_3 = 0;
+int monitor_fd = 0;
 
 void cpu_loop(CPUMIPSState *env)
 {
@@ -2863,9 +3064,13 @@ void cpu_loop(CPUMIPSState *env)
             syscall_num = env->active_tc.gpr[2] - 4000;
 
 #ifdef MEM_MAPPING
+            /*
+            if(syscall_num!=77 && syscall_num!=78)
+                printf("sys num:%d,%x,%d,%d\n", syscall_num, env->active_tc.gpr[4], env->active_tc.gpr[5], env->active_tc.gpr[6]);
+            */
             first_syscall++;
             if (syscall_num == 1 || syscall_num == 246)
-            {
+            {          
                 normal_exit(syscall_num);
             }
             else if(syscall_num == 142)
@@ -2876,36 +3081,43 @@ void cpu_loop(CPUMIPSState *env)
                 }
                 else if(program_id == 161161)
                 {
-                    count_142++;
-                    printf("_______________count 142:%d\n", count_142);
-                    if(count_142 == 3)
+                    if(last_syscall == 142)
                     {
+                        last_syscall = 0;
                         normal_exit(syscall_num); 
                     }
                 }
             }
             else if(syscall_num == 45)
             {
+    
                 if(program_id == 10853)
                 {
                     normal_exit(syscall_num);
                 }
+                if(program_id == 161161)
+                {
+                     normal_exit(syscall_num);
+                }
             }
             else if(syscall_num == 3)
             {
-                /*
-                if((program_id == 10853 || program_id == 9925) && first_syscall == 1)
+                if(program_id == 161161)
                 {
-                    normal_exit(syscall_num);
+                    count_3++;
+                    if(count_3 == 3)
+                    {
+                        count_3 = 0;
+                        last_syscall = 0;
+                        normal_exit(syscall_num);
+                    }
                 }
-                */
             }
-            //if (syscall_num == 1 || syscall_num == 246  || syscall_num == 2 || syscall_num == 188) //dir-818lw
-            //if (syscall_num == 1 || syscall_num == 246  || syscall_num == 2) //dir-815 //dir-817lw 
-            //if (syscall_num == 1 || syscall_num == 246 || syscall_num == 142 || syscall_num == 2) //dir-825 tew-632brp
-            //if (syscall_num == 1 || syscall_num == 246 || syscall_num == 142 || syscall_num == 2 || syscall_num == 45) //dir-825 httpd quick crash
+            if(syscall_num != 3)
+            {
+                count_3 = 0;
+            }
 
-            
 #endif
             if (syscall_num >= sizeof(mips_syscall_args)) {
                 ret = -TARGET_ENOSYS;
@@ -2943,9 +3155,12 @@ void cpu_loop(CPUMIPSState *env)
                 local_or_not = 0;
                 if(syscall_num == 5)
                 {
-     
                     char *file_name = g2h(env->active_tc.gpr[4]);
-                    printf("open file:%s\n", file_name);
+                    printf("open file:%s, flag:%x\n", file_name, env->active_tc.gpr[5]);
+                    if(program_id == 129780 || program_id == 129781)
+                    {
+                        add_tmp_file(file_name);
+                    }
                     if(program_id == 129780 || program_id == 129781)
                     {
                         //printf("current working directory: %s\n", getcwd(NULL, NULL));
@@ -2961,7 +3176,7 @@ void cpu_loop(CPUMIPSState *env)
                         char* c = strrchr(file_name, '/');
                         char dir_name[256];
                         memset(dir_name, 0, 256);
-                        printf("$$$$$$$$$%lx,%lx\n", c, file_name);
+                        //printf("$$$$$$$$$%lx,%lx\n", c, file_name);
                         strncpy(dir_name, file_name, c - file_name);
                         if(access(dir_name, 0) == 0)
                         {
@@ -3003,10 +3218,14 @@ void cpu_loop(CPUMIPSState *env)
                     file_syscall_fd = -1;
                 }
 //local_or_not
-                if(syscall_num == 85 || syscall_num == 10 || syscall_num == 38)// readlink, unlink, rename
+            
+                if(program_id == 90501)
+                {
+                    local_or_not = 1;
+                }
+                else if(syscall_num == 85 || syscall_num == 10 || syscall_num == 38 || syscall_num == 40)// readlink, unlink, rename , rmdir
                 {
                     char *file_name = g2h(env->active_tc.gpr[4]);
-                    printf("************syscall %d:%s\n",syscall_num, file_name);
                     if(access(file_name, 0) == 0)
                     {
                         local_or_not = 1;
@@ -3015,12 +3234,23 @@ void cpu_loop(CPUMIPSState *env)
                 else if(syscall_num == 106) //stat
                 {
                     char *file_name = g2h(env->active_tc.gpr[4]);
-                    printf("************stat %d:%s\n",syscall_num, file_name);
                     local_or_not = 1;
-                }               
+                }
+                               
                 else if (if_standard_io(file_syscall_fd))
                 {
-                    local_or_not = 2;
+                    if(program_id!=90500) //nbench_new
+                    {
+                        local_or_not = 2; //zyw
+                    }
+                    else if(program_id!= 90501) //lmbench
+                    {
+                        local_or_not = 0; //zyw
+                    }
+                    else
+                    {
+                        local_or_not = 1;
+                    }
                 }
                 else if((file_opti == 1) || if_exist_local_fd(file_syscall_fd))
                 {
@@ -3033,6 +3263,27 @@ void cpu_loop(CPUMIPSState *env)
                         local_or_not = 1;
                     }
                 }
+                //nbench_new
+                 //else if(syscall_num == 283 || syscall_num == 43) //set_thread_area
+                else if(syscall_num == 283 || syscall_num == 90 || syscall_num == 91 || syscall_num == 43) //set_thread_area
+                {
+                    if(program_id == 90500 || program_id == 90501)
+                    {
+                        local_or_not = 1;
+                    }
+                }
+                
+                //lat_syscall null
+                else if(syscall_num == 64 && program_id == 90501) //getppid
+                {
+                    local_or_not = 1;
+                }
+                /*
+                else if(syscall_num == 42 || syscall_num == 77 || syscall_num == 78) //pipe
+                {
+                    local_or_not = 1;
+                }
+                */
                 /*
                 else if(syscall_num == 39 || syscall_num == 40) //mkdir, rmdir
                 {
@@ -3054,19 +3305,6 @@ void cpu_loop(CPUMIPSState *env)
                     {
                         condition = 1;
                     }
-                    /*
-                    else if(program_id == 9050)
-                    {
-                        if(syscall_num == 45)
-                        {
-                            condition = 0;
-                        }
-                        else
-                        {
-                            condition = 1;
-                        }
-                    }
-                    */
                     else if(program_id == 10853)
                     {
                         if(syscall_num == 178)
@@ -3104,14 +3342,20 @@ void cpu_loop(CPUMIPSState *env)
                 //else if(0)
 // do syscall
                 user_syscall_flag = 1;
+
+#ifdef FEED_INPUT
                 if((syscall_num == 175  || syscall_num == 3 || syscall_num == 176)
-                    && strcmp(feed_type,"FEED_HTTP") == 0 && (env->active_tc.gpr[4] == accept_fd))
+                    && strcmp(feed_type,"FEED_HTTP") == 0 && (env->active_tc.gpr[4] == accept_fd) && feed_input_times == 0)
                 {
+                    if(program_id == 161161)
+                    {
+                        feed_input_times++;
+                    }
                     //printf("hook recv fd:%d\n", accept_fd);
                     int flag = env->active_tc.gpr[7];
                     int len = env->active_tc.gpr[6];
                     char *buf = g2h(env->active_tc.gpr[5]);
-                    printf("recv :%d,%d,%d, %s\n", accept_fd, len,buf_read_index, recv_buf);
+                    //printf("recv :%d,%d,%d, %s\n", accept_fd, len,buf_read_index, recv_buf);
                     int rest_len = total_len - buf_read_index;
                     //printf("hook flag:%x, %x\n", MSG_PEEK, flag);
                     if(rest_len > len)
@@ -3124,31 +3368,59 @@ void cpu_loop(CPUMIPSState *env)
                         ret  = rest_len;
                         memcpy(buf, recv_buf + buf_read_index, ret);
                     }
-                    //printf("recv content:%s\n", buf);
-                    if(MSG_PEEK != flag)
-                    {
-                        buf_read_index+=ret;
-                    }
-                    else
+                    /*
+                    FILE *fp = fopen("new_case", "w+");
+                    printf("recv content:%s\n", buf);
+                    fputs(buf, fp);
+                    fclose(fp);
+                    */
+
+                    if(MSG_PEEK == flag && (syscall_num == 175 || syscall_num == 176))
                     {
                         //printf("recv msg_peek\n");
                     }
+                    else
+                    {
+                        buf_read_index+=ret;
+                        
+                    }
+                }
+                else if((env->active_tc.gpr[4]== accept_fd) && syscall_num == 140 && strcmp(feed_type,"FEED_HTTP") == 0)
+                {
+                    ret = 0;
                 }
                 
-                else if((env->active_tc.gpr[4]== accept_fd)  && (syscall_num == 4 || syscall_num == 178)
-                    && strcmp(feed_type,"FEED_HTTP") == 0)
+                else if((env->active_tc.gpr[4]== accept_fd) && syscall_num == 178 && strcmp(feed_type,"FEED_HTTP") == 0)
                 {
                     ret = env->active_tc.gpr[6];
                 }
-                
                 /*
-                else if(syscall_num == 54)
+                else if((env->active_tc.gpr[4]== accept_fd) && syscall_num == 55 && strcmp(feed_type,"FEED_HTTP") == 0)
                 {
-                    ret = 19;
-                    env->active_tc.gpr[7] = 1;
+                    ret = env->active_tc.gpr[5];
                 }
                 */
+                else if((env->active_tc.gpr[4]== accept_fd) && syscall_num == 4 && strcmp(feed_type,"FEED_HTTP") == 0)
+                {
+                    if(program_id == 161161)
+                    {
+                       normal_exit(syscall_num);
+                    }
+                    else
+                    {
+                        ret = env->active_tc.gpr[6];
+                    }
+                }
+#endif               
+                
+#ifdef LMBENCH //lmbench use fork system call for lat_pipe
+                if(condition)
+#else                   
+#ifdef FEED_INPUT
                 else if(syscall_num == 2)
+#else
+                if(syscall_num == 2)
+#endif            
                 {
                     ret = 100;
                 }
@@ -3164,19 +3436,19 @@ void cpu_loop(CPUMIPSState *env)
                 {
                     ret = 0;
                 }
-                else if(syscall_num == 194)
+                else if(syscall_num == 194 && program_id != 90501)
                 {
                     ret = 0;
                 }
+                
                 else if(condition == 2) 
                 {
                     ret = env->active_tc.gpr[6]; 
                 }
                 else if(condition)
-                //if((syscall_num ==5 && file_opti == 1) || (file_fd!=-1 && env->active_tc.gpr[4] == file_fd) || syscall_num ==166) //dir-825 time 13, tew 166
+#endif//lmbench 
                 {
-                    user_syscall_flag = 1;
-                    gettimeofday(&handle_syscall_start, NULL);
+                    //gettimeofday(&handle_syscall_start, NULL);
                     user_syscall_count++;
                     if(print_debug)
                     {
@@ -3185,47 +3457,51 @@ void cpu_loop(CPUMIPSState *env)
                     }
 
 
-                if((program_id == 129780 || program_id == 129781) && syscall_num == 5)
-                {
-                    //printf("current working directory: %s\n", getcwd(NULL, NULL));
-                    chdir("/server/cgi-bin/"); 
-                }
-                else if(syscall_num == 3 || syscall_num == 4)
-                {
-                    syscall_addr_check(env->active_tc.gpr[5], env->active_tc.gpr[6], syscall_num);
-                }
-                /*
-                else if(syscall_num == 170)
-                {
-                    syscall_addr_check(env->active_tc.gpr[5], env->active_tc.gpr[6], syscall_num);
-                    printf("connect %s\n", g2h(env->active_tc.gpr[5]));
-                }
-                */
+                    if((program_id == 129780 || program_id == 129781) && syscall_num == 5)
+                    {
+                        //printf("current working directory: %s\n", getcwd(NULL, NULL));
+                        chdir("/server/cgi-bin/"); 
+                    }
+                    else if(syscall_num == 3 || syscall_num == 4)
+                    {
+                        //very important for 129781
+                        syscall_addr_check(env->active_tc.gpr[5], env->active_tc.gpr[6], syscall_num);
+                    }
+                    /*
+                    else if(syscall_num == 170)
+                    {
+                        syscall_addr_check(env->active_tc.gpr[5], env->active_tc.gpr[6], syscall_num);
+                        printf("connect %s\n", g2h(env->active_tc.gpr[5]));
+                    }
+                    */
 #endif
-                ret = do_syscall(env, env->active_tc.gpr[2],
-                                 env->active_tc.gpr[4],
-                                 env->active_tc.gpr[5],
-                                 env->active_tc.gpr[6],
-                                 env->active_tc.gpr[7],
-                                 arg5, arg6, arg7, arg8);
-#ifdef MEM_MAPPING                
-                if((program_id == 129780 || program_id == 129781) && syscall_num == 5)
-                {
-                    chdir("/");
-                }
+                    user_syscall_flag = 1;
+                    ret = do_syscall(env, env->active_tc.gpr[2],
+                                     env->active_tc.gpr[4],
+                                     env->active_tc.gpr[5],
+                                     env->active_tc.gpr[6],
+                                     env->active_tc.gpr[7],
+                                     arg5, arg6, arg7, arg8);
+                    
+                    
 
+#ifdef MEM_MAPPING                
+                    if((program_id == 129780 || program_id == 129781) && syscall_num == 5)
+                    {
+                        chdir("/");
+                    }
                     //optimization
                     if(file_opti == 1)
                     {
-
                         add_local_fd(ret);
                     }
-                    gettimeofday(&handle_syscall_end, NULL);
+                    //gettimeofday(&handle_syscall_end, NULL);
                     if(print_debug)
                     {
                         printf("time:%f, sys num ret:%x\n",handle_syscall_end.tv_sec + handle_syscall_end.tv_usec/1000000.0, ret);
                     }
                     handle_syscall_total += (double)handle_syscall_end.tv_sec - handle_syscall_start.tv_sec + (handle_syscall_end.tv_usec - handle_syscall_start.tv_usec)/1000000.0;
+
                 }
 
                 else{
@@ -3233,17 +3509,30 @@ void cpu_loop(CPUMIPSState *env)
                     user_syscall_flag = 0;
                     env->active_tc.PC -= 4; //very important
                     gettimeofday(&handle_state_start, NULL);
-                    printf("time:%f, remote syscall:%d, arg:%x,%x,%x,%x\n",handle_state_start.tv_sec + handle_state_start.tv_usec/1000000.0, 
-                        syscall_num, env->active_tc.gpr[4],env->active_tc.gpr[5],env->active_tc.gpr[6]);
+                    //printf("time:%f, remote syscall:%d, arg:%x,%x,%x,%x\n",handle_state_start.tv_sec + handle_state_start.tv_usec/1000000.0, 
+                        //syscall_num, env->active_tc.gpr[4],env->active_tc.gpr[5],env->active_tc.gpr[6]);
                     //printf("syscall:%d\n", syscall_num);
                     write_state(cs->env_ptr, 0);
                     read_state(env->active_tc.PC, cs->env_ptr);
+                    if(env->active_tc.PC == 0)
+                    {
+                        printf("meet singal 4194\n");
+                        normal_exit(0);
+                    }
                       
                     ret = env->active_tc.gpr[2];
                     if(syscall_num == 45)
                     {
                         //sprintf("brk new memory:%x\n", env->active_tc.gpr[2]);
-                        target_ulong tmp_page = (env->active_tc.gpr[2] & 0xfffff000) -0x1000;
+                        target_ulong tmp_page;
+                        if((env->active_tc.gpr[2] & 0xfff) != 0)
+                        {
+                            tmp_page= (env->active_tc.gpr[2] & 0xfffff000);
+                        }
+                        else
+                        {
+                            tmp_page = (env->active_tc.gpr[2] & 0xfffff000) -0x1000;
+                        }
                         while(1)
                         {
                             if(if_memory_rw(tmp_page, 1))
@@ -3274,11 +3563,12 @@ void cpu_loop(CPUMIPSState *env)
                     }
                     */
                     gettimeofday(&handle_state_end, NULL);
-                    printf("time: %f, ret value:%x\n", handle_state_end.tv_sec + handle_state_end.tv_usec/1000000.0, ret);
+                    //printf("time: %f, ret value:%x\n", handle_state_end.tv_sec + handle_state_end.tv_usec/1000000.0, ret);
                     handle_state_total += (double)handle_state_end.tv_sec - handle_state_start.tv_sec + (handle_state_end.tv_usec - handle_state_start.tv_usec)/1000000.0;
                 }
 #endif
             }
+            last_syscall = syscall_num;
 done_syscall:
 # else
             ret = do_syscall(env, env->active_tc.gpr[2],
@@ -5272,12 +5562,12 @@ int main(int argc, char **argv, char **envp)
     printf("mem file %s\n", mem_file);
     mem_file_fd = open(mem_file, O_RDWR, 0);
     assert(mem_file_fd!=-1);
-#endif
+
 
     getconfig("program_analysis", program_analysis); 
     assert(strlen(program_analysis)>0);
     FirmAFL_config();
-
+#endif
     
     struct target_pt_regs regs1, *regs = &regs1;
     struct image_info info1, *info = &info1;
@@ -5930,12 +6220,21 @@ int main(int argc, char **argv, char **envp)
 
 #ifdef MEM_MAPPING
 
+    struct sigaction s_ill; //illegal instruction
+    s_ill.sa_flags = SA_SIGINFO;
+    s_ill.sa_sigaction = handler_s_ill;
+    sigemptyset(&s_ill.sa_mask);
+    sigaddset(&s_ill.sa_mask, SIGILL);
+    sigaction(SIGILL, &s_ill, 0);
+
     struct sigaction s;
     s.sa_flags = SA_SIGINFO;
     s.sa_sigaction = handler;
     sigemptyset(&s.sa_mask);
     sigaddset(&s.sa_mask, SIGSEGV);
     sigaction(SIGSEGV, &s, 0);
+
+
     open_write_pipe();
     open_read_pipe();
     for(int j=0x400; j <= 0x7ffff; j++)
@@ -5967,6 +6266,7 @@ int main(int argc, char **argv, char **envp)
 
 
 #ifdef PRE_MAPPING
+
     for(int k=0; k<vir_spa_index; k++)
     {
         MISSING_PAGE page;
@@ -6056,12 +6356,21 @@ int main(int argc, char **argv, char **envp)
                     }
                 }
             }
+            /*
+            if(strcmp(program_analysis, "nbench_new") == 0)
+            {
+                if((i - gva_start[k] >= 0x10000))
+                {
+                    continue;
+                }
+            }
+            */
 
             add_premap_page(i);
             //
 
             write_addr(&page);
-            read_addr(&mmap_addr);
+            read_addr(page.addr, &mmap_addr);
             if(page.prot == 0)
             {
                 target_mmap(i, 1024*4, PROT_READ, MAP_SHARED | MAP_FIXED,  mem_file_fd, (mmap_addr- hva_start) & 0xfffffffffffff000); 
@@ -6081,7 +6390,6 @@ int main(int argc, char **argv, char **envp)
                 add_store_write_page(i);
             }
         }    
-
         for(int i = gva_start[k]; i < gva_end[k]; i = i+ 1024*4)
         {
             if(page.prot == 0)
@@ -6093,7 +6401,7 @@ int main(int argc, char **argv, char **envp)
                 add_memory_rw(i, 0);
                 add_memory_rw(i, 1);
             }
-        }      
+        }  
     }
 
 #else
@@ -6185,6 +6493,12 @@ int main(int argc, char **argv, char **envp)
 #ifdef FEED_INPUT
     prepare_feed_input(cpu);
 #endif
+    if(CP0_UserLocal!=0)
+    {
+        env->active_tc.CP0_UserLocal = CP0_UserLocal;
+        printf("CP0_UserLocal:%x\n", CP0_UserLocal);
+    }
+    //env->active_tc.CP0_UserLocal = 0xa98490;
     cpu_loop(env);
     /* never exits */
     return 0;
@@ -6200,9 +6514,9 @@ void loadCPUShState(CPUSHSTATE *state, CPUArchState *env)
         env->active_tc.gpr[i] = state->regs[i];
     }
     env->active_tc.PC = state->PC;
-    //env->CP0_Status = state->CP0_Status;
-    //env->CP0_Cause = state->CP0_Cause;
-    //env->CP0_EPC = state->CP0_EPC;  
+    env->CP0_Status = state->CP0_Status;
+    env->CP0_Cause = state->CP0_Cause;
+    env->CP0_EPC = state->CP0_EPC;  
     
 }
 
@@ -6244,6 +6558,20 @@ int if_write_page_store(int vaddr) //vaddr <= 0x7ffff000
 
 }
 
+
+
+target_ulong h2g_child(unsigned long x)
+{
+    if(h2g_valid(x)){
+        return h2g_nocheck(x);
+    }
+    else
+    {
+        bug_exit(0xfffffffe);
+    }
+}
+
+
 #ifdef NEW_MAPPING
 static void handler(int sig_num, siginfo_t *si, void *ptr)
 {
@@ -6280,11 +6608,20 @@ static void handler(int sig_num, siginfo_t *si, void *ptr)
 
         int re;
         gettimeofday(&handle_addr_start, NULL);
+        
+        cross_process_mutex_init(); //zyw
+        pthread_mutex_lock(p_mutex_shared);
+
         printf("cur pc:%x, %x, %x, %d\n", cur_guest_pc, env->active_tc.PC, error_addr, prot);
         env->active_tc.PC = cur_guest_pc;
         write_state(env, error_addr);
         uintptr_t phys_addr;
-        read_addr(&phys_addr);
+        read_addr(error_addr, &phys_addr);
+        if(mmap_addr == 0)
+        {
+            printf("handle addr error:%x\n",page.addr);
+            normal_exit(0);
+        }
 
         //phys_addr -= hva_start;
         //while(phys_addr != 0)
@@ -6305,16 +6642,21 @@ static void handler(int sig_num, siginfo_t *si, void *ptr)
         //}
         
         //read_state(env->active_tc.PC, env);
+        pthread_mutex_unlock(p_mutex_shared);
+        cross_shamem_disconn(); //ZYW 
     }
 }
 
 #else
-extern target_ulong last_pc;
+
 static void handler(int sig_num, siginfo_t *si, void *ptr)
 {
+
     ucontext_t *uc = (ucontext_t *)ptr;
     MISSING_PAGE page;
-    page.addr = h2g(si->si_addr);
+
+    page.addr = h2g_child(si->si_addr);
+
     if(page.addr == 0)
     {
         printf("last pc:%x\n", last_pc);
@@ -6351,19 +6693,45 @@ static void handler(int sig_num, siginfo_t *si, void *ptr)
     {
         printf("handle:%x,%d, %d, %d\n", page.addr, page.prot, res, page.prot);
     }
+#ifdef LMBENCH
+    if((page.addr > 0x70000000 && page.addr < 0x80000000) || (page.addr>0x400000 && page.addr<0xf00000)){
+#else
     if(res){
-    //if((page.addr > 0x70000000 && page.addr < 0x80000000) || (page.addr>0x400000 && page.addr<0xa00000)){
+#endif
+    //  
+        if((page.addr & 0xff000000) == 0x7f000000)
+        {
+            if(program_id == 129781)
+            {
+                printf("handle special addr:%x\n", page.addr);
+                normal_exit(0);
+            }
+        }
+
         uintptr_t mmap_addr;
 
         int re;
         gettimeofday(&handle_addr_start, NULL);
         
         cross_process_mutex_init(); //zyw
-        
         pthread_mutex_lock(p_mutex_shared);
         //printf("handler lock:%x\n", page.addr);
+#ifdef LMBENCH //lat_pipe
+        if((page.addr & 0xfffff000) == 0x4b4000)
+        {
+            page.prot = 1;
+        }
+#endif
         write_addr(&page);
-        re = read_addr(&mmap_addr);
+        re = read_addr(page.addr, &mmap_addr);
+        if(mmap_addr == 0)
+        {
+            printf("handle addr error:%x\n",page.addr);
+            pthread_mutex_unlock(p_mutex_shared);
+            cross_shamem_disconn(); //ZYW 
+
+            normal_exit(0);
+        }
         int file_offset = (mmap_addr - hva_start) & 0xfffffffffffff000;
         if(page.prot == 0 || page.prot == 2)
         {
@@ -6391,6 +6759,7 @@ static void handler(int sig_num, siginfo_t *si, void *ptr)
         {
             //new
             gettimeofday(&store_page_start, NULL);
+
     #ifdef STORE_PAGE_FUNC
             store_page(h2g(si->si_addr) & 0xfffff000, 1);
             addr_pair[addr_pair_index].virt_page = h2g(si->si_addr) & 0xfffff000;
@@ -6408,62 +6777,29 @@ static void handler(int sig_num, siginfo_t *si, void *ptr)
         if(addr_pair_index > 500)
         {
             printf("addr_pair_index over 1000:%d\n", addr_pair_index);
-
-            gettimeofday(&restore_page_start, NULL);
-            restore_page();  //zyw
-            gettimeofday(&restore_page_end, NULL);
-            restore_page_total += (double)restore_page_end.tv_sec - restore_page_start.tv_sec + (restore_page_end.tv_usec - restore_page_start.tv_usec)/1000000.0;
-
-            int cmd = 0x20;// restore page
-            USER_MODE_TIME user_mode_time;
-            user_mode_time.handle_state_time = handle_state_total;
-            user_mode_time.handle_addr_time = handle_addr_total;
-            user_mode_time.handle_syscall_time = handle_syscall_total;
-            user_mode_time.store_page_time = store_page_total;
-            user_mode_time.restore_page_time = restore_page_total;
-            user_mode_time.user_syscall_count = user_syscall_count;
-            user_mode_time.store_count = store_count;
-            write_aflcmd(cmd, &user_mode_time);
-            /*
-            if(pipe_read_fd != -1)
-            {
-                close(pipe_read_fd);
-            }
-            if(pipe_write_fd != -1)
-            {
-                close(pipe_write_fd);
-            }
-            */
-            printf("exit\n");
-            exit(32);
+            bug_exit(0xffffffff);
         }
+
     #endif
+        //printf("handler end\n");
     } 
     else{
-#ifdef STORE_PAGE_FUNC
-        gettimeofday(&restore_page_start, NULL);
-        restore_page();  //zyw
-        gettimeofday(&restore_page_end, NULL);
+#ifdef FEED_INPUT
+        /*
+        if(program_id == 129781)
+        {
+            FILE *fp = fopen("outputs/new_crash_case", "w+");
+            printf("error addr:%x,%lx\n",page.addr, si->si_addr);
+            printf("recv content:%s\n", g2h(content_addr));
+            fputs(g2h(content_addr), fp);
+            fclose(fp);        
+        }
+        */
 #endif
-        restore_page_total += (double)restore_page_end.tv_sec - restore_page_start.tv_sec + (restore_page_end.tv_usec - restore_page_start.tv_usec)/1000000.0;
-
-        int cmd = 0x20;// restore page
-        USER_MODE_TIME user_mode_time;
-        user_mode_time.handle_state_time = handle_state_total;
-        user_mode_time.handle_addr_time = handle_addr_total;
-        user_mode_time.handle_syscall_time = handle_syscall_total;
-        user_mode_time.store_page_time = store_page_total;
-        user_mode_time.restore_page_time = restore_page_total;
-        user_mode_time.user_syscall_count = user_syscall_count;
-        user_mode_time.store_count = store_count;
-        write_aflcmd(cmd, &user_mode_time);
-#ifdef TARGET_MIPS
-        CPUArchState *env = first_cpu->env_ptr;
-        printf("exit with error:%x, sp:%x\n", page.addr, env->active_tc.gpr[29]);
-#endif
-        exit(32);
+        bug_exit(page.addr);
 
    }
+
 }
 #endif
 
@@ -6543,6 +6879,8 @@ int parse_mapping_table(char *filename)
 #endif
     fgets(strline, 100, fp);
     accept_fd = strtol(strline, NULL, 10);
+    fgets(strline, 100, fp);
+    CP0_UserLocal = strtol(strline, NULL, 16);
     fclose(fp);
 }
 
@@ -6588,7 +6926,7 @@ int open_read_pipe()
               printf("read state open failed\n");  
               sleep(100);
         } 
-        printf("open read pipe:%d\n", pipe_read_fd);
+        printf("open read pipe:%d,%d\n", pipe_read_fd, getpid());
     }
       
 }  
@@ -6624,7 +6962,7 @@ int write_state(CPUArchState *env, target_ulong address)
             printf("Write error on pipe\n");sleep(1000);
             exit(EXIT_FAILURE);  
         }   
-        //printf("write state ok %x\n",  cpustate.PC);
+        printf("write state ok %x,pipd:%d\n",  cpustate.PC, pipe_write_fd);
     }  
     else{
         printf("write error\n");
@@ -6689,8 +7027,31 @@ int write_addr(MISSING_PAGE *page)
         printf("write addr pipe not open error\n");sleep(1000);
         exit(EXIT_FAILURE);  
     }
+
     return 1;  
 }  
+
+int read_aflcmd()
+{
+  int res = 0;
+  if(pipe_read_fd != -1)  
+  {    
+      int is_loop_over;
+      res = read_content(pipe_read_fd, &is_loop_over, sizeof(int));
+      if(res == -1)  
+      {  
+          fprintf(stderr, "read_aflcmd error on pipe\n");  sleep(1000);
+          exit(EXIT_FAILURE);  
+      }
+      printf("write aflcmd %d\n", is_loop_over); 
+      return is_loop_over;
+  }  
+  else {
+      printf("read pipe not open\n");
+      sleep(1000);
+      exit(EXIT_FAILURE);  
+  }
+}
 
 
 int read_state(target_ulong pc, CPUArchState *env)  
@@ -6715,7 +7076,7 @@ int read_state(target_ulong pc, CPUArchState *env)
         }
         */
         loadCPUShState(&cpustate, env);
-        //printf("read state ok:%lx\n", env->active_tc.PC);
+        printf("read state ok:%lx\n", env->active_tc.PC);
     }  
     else {
         printf("read pipe not open\n");sleep(1000);
@@ -6726,19 +7087,34 @@ int read_state(target_ulong pc, CPUArchState *env)
 
 
 //zyw return 0 failed, 1 success
-int read_addr(uintptr_t *addr)  
+int read_addr(target_ulong ori_addr, uintptr_t *addr)  
 {      
     int res = 0;  
+    target_ulong low_three= 0;
+    target_ulong low_bits = 0;
+    target_ulong high_bits = 0;
+    target_ulong ori_low_three = ori_addr & 0xfff;
     if(pipe_read_fd != -1)  
     {    
         *addr = 0;
-        res = read_content(pipe_read_fd, addr, sizeof(uintptr_t));  
+        /*
+        do
+        {
+            res = read_content(pipe_read_fd, addr, sizeof(uintptr_t));
+            low_three = (*addr) & 0xfff;
+            low_bits = (*addr) & 0xffffffff;
+            high_bits = ((*addr)>>32) & 0xffffffff;
+            printf("??????? read not right\n");
+        }
+        while(low_three != ori_low_three || low_bits == 0 || high_bits!=0);
+        */
+        res = read_content(pipe_read_fd, addr, sizeof(uintptr_t));
         if(res == -1)  
         {  
             fprintf(stderr, "read addr error on pipe\n");  sleep(1000);
             exit(EXIT_FAILURE);  
         }
-        printf("read addr:%lx, %x\n", *addr, res); 
+        //printf("read addr:%lx, %x\n", *addr, res); 
     }  
     else {
         printf("read pipe not open\n");
@@ -6748,6 +7124,24 @@ int read_addr(uintptr_t *addr)
     return 1;
 } 
 
+
+/*
+void close_all_pipe()
+{
+    printf("######### close all pipe\n");
+    close(pipe_read_fd);
+    close(pipe_write_fd);
+    pipe_read_fd = -1;
+    pipe_write_fd = -1;
+}
+
+void open_all_pipe()
+{
+    printf("######### open all pipe\n");
+    open_write_pipe();
+    open_read_pipe();
+}
+*/
 
 #ifdef STORE_PAGE_FUNC
 int find_phys_addr(int virt_addr, int * phys_addr)
@@ -6764,9 +7158,89 @@ int find_phys_addr(int virt_addr, int * phys_addr)
 }
 #endif
 
-void handle_store(target_ulong page_addr)
+#ifdef NEW_MAPPING
+void handle_store(CPUArchState *env, target_ulong cur_guest_pc, target_ulong page_addr)
 {
 
+    
+    //zyw
+    //printf("do_store_exclusive:%x\n", page_addr); //every time handle a store, it takes time.
+    //gettimeofday(&handle_addr_start, NULL);
+    store_count += 1;
+    int store_res = if_write_page_store(page_addr);
+    //gettimeofday(&handle_addr_end, NULL);
+    //handle_addr_total += (double)handle_addr_end.tv_sec - handle_addr_start.tv_sec + (handle_addr_end.tv_usec - handle_addr_start.tv_usec)/1000000.0;
+    if(!store_res)
+    {
+        //int map_res = if_vaddr_write_mapped(page_addr);
+        //if(!map_res)
+        //{
+            printf("cur pc:%x, %x, %x\n", cur_guest_pc, env->active_tc.PC, page_addr);
+            gettimeofday(&handle_addr_start, NULL);
+            MISSING_PAGE page;
+            page.prot = 1;
+            page.addr = page_addr;
+            page.mmu_idx = 2;
+
+            cross_process_mutex_init(); //zyw
+            pthread_mutex_lock(p_mutex_shared);
+
+            env->active_tc.PC = cur_guest_pc;
+            write_state(env, page_addr);
+            uintptr_t phys_addr;
+            read_addr(page_addr, &phys_addr);
+            if(mmap_addr == 0)
+            {
+                printf("handle addr error:%x\n",page.addr);
+                pthread_mutex_unlock(p_mutex_shared);
+                cross_shamem_disconn(); //zyw 
+                normal_exit(0);
+            }
+            target_mmap(page_addr & 0Xfffff000, 1024*4, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_FIXED,  mem_file_fd, phys_addr & 0Xfffff000);
+            //add_write_mapped_vaddr(page_addr);
+#ifdef STORE_PAGE_FUNC
+            addr_pair[addr_pair_index].virt_page = page_addr;
+            addr_pair[addr_pair_index].phys_page = phys_addr;
+            addr_pair_index++;
+#endif
+
+            pthread_mutex_unlock(p_mutex_shared);
+            cross_shamem_disconn(); //zyw 
+
+            gettimeofday(&handle_addr_end, NULL);
+            double handle_addr_time  =  (double)handle_addr_end.tv_sec - handle_addr_start.tv_sec + (handle_addr_end.tv_usec - handle_addr_start.tv_usec)/1000000.0;
+            printf("write map time:%f, addr:%lx,%lx\n", handle_addr_time, page_addr, phys_addr);
+            handle_addr_total += handle_addr_time;
+        //}
+//zyw part of lightweight snapshot 
+        gettimeofday(&store_page_start, NULL);
+#ifdef STORE_PAGE_FUNC
+        store_page(page_addr,1);
+        int phys_page;
+        int index = find_phys_addr(page_addr, &phys_page);
+        if(index == -1)
+        {
+            printf("could find_phys_addr:%x\n", page_addr);
+            sleep(1000);
+        }
+        add_store_write_page(page_addr);
+#ifdef SNAPSHOT_SYNC
+        add_physical_page(phys_page);
+#endif
+#endif
+        gettimeofday(&store_page_end, NULL);
+        store_page_total += (double)store_page_end.tv_sec - store_page_start.tv_sec + (store_page_end.tv_usec - store_page_start.tv_usec)/1000000.0;
+    }
+}
+
+#else
+
+void handle_store(CPUArchState *env, target_ulong pc, target_ulong page_addr)
+{
+
+#ifdef LMBENCH
+    return;
+#endif
     
     //zyw
     //printf("do_store_exclusive:%x\n", page_addr); //every time handle a store, it takes time.
@@ -6791,9 +7265,16 @@ void handle_store(target_ulong page_addr)
             pthread_mutex_lock(p_mutex_shared);
 
             write_addr(&page);
-            read_addr(&mmap_addr);
+            read_addr(page.addr, &mmap_addr);
+            if(mmap_addr == 0)
+            {
+                printf("handle addr error:%x\n",page.addr);
+                pthread_mutex_unlock(p_mutex_shared);
+                cross_shamem_disconn(); //zyw 
+                normal_exit(0);
+            }
             int file_offset = (mmap_addr - hva_start) & 0xfffffffffffff000;
-            target_mmap(page_addr, 1024*4, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_FIXED,  mem_file_fd, file_offset);
+            uintptr_t res  = target_mmap(page_addr, 1024*4, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_FIXED,  mem_file_fd, file_offset);
             //add_write_mapped_vaddr(page_addr);
 #ifdef STORE_PAGE_FUNC
             addr_pair[addr_pair_index].virt_page = page_addr;
@@ -6806,7 +7287,7 @@ void handle_store(target_ulong page_addr)
 
             gettimeofday(&handle_addr_end, NULL);
             double handle_addr_time  =  (double)handle_addr_end.tv_sec - handle_addr_start.tv_sec + (handle_addr_end.tv_usec - handle_addr_start.tv_usec)/1000000.0;
-            printf("write map time:%f, addr:%x\n", handle_addr_time, page_addr);
+            //printf("handle store write map time:%f, addr:%lx,%lx\n", handle_addr_time, page_addr, file_offset);
             handle_addr_total += handle_addr_time;
         //}
 //zyw part of lightweight snapshot 
@@ -6829,6 +7310,7 @@ void handle_store(target_ulong page_addr)
         store_page_total += (double)store_page_end.tv_sec - store_page_start.tv_sec + (store_page_end.tv_usec - store_page_start.tv_usec)/1000000.0;
     }
 }
+#endif
 
 #ifdef STORE_PAGE_FUNC
 typedef struct STORE_PAGE{
@@ -6894,7 +7376,42 @@ void store_page(uintptr_t guest_addr, int flag)
 }
 
 
-
+//remember not to free page 
+void restore_page_exception()
+{
+    //printf("restore_page start\n");
+    for(int i=0; i<0x1000; i++)
+    {
+        uintptr_t * pt = snapshot_shmem_start + i * 8;
+        //printf("rpage addr:%lx,%lx,%lx\n", shmem_start, pt, *(uintptr_t* )shmem_start);   
+        STORE_PAGE *tmp_p = *pt; 
+        STORE_PAGE *last_p = NULL;
+        while(tmp_p){
+            //printf("page addr:%lx\n",tmp_p);
+            uintptr_t dst = tmp_p-> prev_addr;
+            uintptr_t src = tmp_p-> curr_addr;
+            int flag = tmp_p->flag;
+            printf("restore:%lx,%lx\n", src,dst);
+            memcpy(dst, src, 0x1000);
+            if(flag == 1)
+            {
+                if(last_p!=NULL)
+                {
+                    last_p->page = NULL;
+                }
+                else
+                {
+                    *pt = NULL;
+                }
+                
+            }
+            last_p = tmp_p; 
+            tmp_p = tmp_p->page;
+        }
+    }
+    //shmem_pt = snapshot_shmem_start + 8 * 0x1000;
+    //printf("restore_page end\n");
+}
 
 //remember not to free page 
 void restore_page()

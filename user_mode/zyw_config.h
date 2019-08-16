@@ -12,6 +12,19 @@ typedef struct
 
 
 //#define NO_MAPPING_AND_FUZZ
+
+//#define LMBENCH
+
+#ifdef LMBENCH
+
+define MAPPING_WITHOUT_FUZZ
+#define MEM_MAPPING
+#define PRE_MAPPING 
+
+#else
+
+
+//#define NO_MAPPING_AND_FUZZ
 //#define MAPPING_WITHOUT_FUZZ
 #define MEM_MAPPING
 //#define NEW_MAPPING
@@ -19,5 +32,9 @@ typedef struct
 #define PRE_MAPPING //comment out if choose NEW_MAPPING
 #define STORE_PAGE_FUNC
 //#define PADDR_MAP_CHECK
-#define FEED_INPUT //FEED_ENV or FEED_HTTP
+//#define FEED_INPUT //FEED_ENV or FEED_HTTP
 #define MAX_LEN 3000
+
+
+
+#endif

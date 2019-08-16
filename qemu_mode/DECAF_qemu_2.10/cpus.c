@@ -66,7 +66,8 @@ extern void handlePiperead(void *ctx);
 
 
 #include "zyw_config3.h"
-
+//zyw
+extern void spawn_thread_after_fork();
 
 #ifdef CONFIG_LINUX
 
@@ -102,6 +103,7 @@ bool cpu_is_stopped(CPUState *cpu)
     return cpu->stopped || !runstate_is_running();
 }
 
+
 static bool cpu_thread_is_idle(CPUState *cpu)
 {
     if (cpu->stop || cpu->queued_work_first) {
@@ -120,7 +122,6 @@ static bool cpu_thread_is_idle(CPUState *cpu)
 static bool all_cpu_threads_idle(void)
 {
     CPUState *cpu;
-
     CPU_FOREACH(cpu) {
         if (!cpu_thread_is_idle(cpu)) {
             return false;
@@ -1085,6 +1086,8 @@ static void qemu_wait_io_event_common(CPUState *cpu)
     process_queued_cpu_work(cpu);
 }
 
+
+
 static bool qemu_tcg_should_sleep(CPUState *cpu)
 {
     if (mttcg_enabled) {
@@ -1095,15 +1098,15 @@ static bool qemu_tcg_should_sleep(CPUState *cpu)
 }
 
 
-static void qemu_tcg_wait_io_event(CPUState *cpu)
+
+void qemu_tcg_wait_io_event(CPUState *cpu)
+//static void qemu_tcg_wait_io_event(CPUState *cpu)
 {
 #ifdef MEM_MAPPING_ext
     while (afl_wants_cpu_to_stop || qemu_tcg_should_sleep(cpu)) {
 #else
     while (qemu_tcg_should_sleep(cpu)) {
 #endif
-        //if(afl_user_fork)
-            //DECAF_printf("qemu_tcg_should_sleep\n");
         stop_tcg_kick_timer();
         qemu_cond_wait(cpu->halt_cond, &qemu_global_mutex);
     }
@@ -1278,7 +1281,48 @@ static void process_icount_data(CPUState *cpu)
     }
 }
 
+#ifdef MEM_MAPPING
+extern void *qemu_handle_addr_thread_fn(void *arg);
+extern int tcg_handle_addr;
+#endif
 
+static int tcg_cpu_exec(CPUState *cpu)
+{
+#ifdef MEM_MAPPING
+    if(tcg_handle_addr == 1)
+    {
+        qemu_mutex_unlock_iothread();
+        qemu_handle_addr_thread_fn(cpu);
+        afl_wants_cpu_to_stop = 1;
+        qemu_mutex_lock_iothread();
+    }
+    else
+    {
+#endif
+        int ret;
+#ifdef CONFIG_PROFILER
+        int64_t ti;
+#endif
+
+#ifdef CONFIG_PROFILER
+        ti = profile_getclock();
+#endif
+        qemu_mutex_unlock_iothread();
+        cpu_exec_start(cpu);
+        ret = cpu_exec(cpu);
+        cpu_exec_end(cpu);
+        qemu_mutex_lock_iothread();
+#ifdef CONFIG_PROFILER
+        tcg_time += profile_getclock() - ti;
+#endif
+        return ret;
+#ifdef MEM_MAPPING
+    }
+#endif
+}
+
+
+/*
 static int tcg_cpu_exec(CPUState *cpu)
 {
     int ret;
@@ -1299,7 +1343,19 @@ static int tcg_cpu_exec(CPUState *cpu)
 #endif
     return ret;
 }
+*/
+/*
+void out_of_cpu_exec(CPUState *cpu)
+{
+    cpu_exec_end(cpu);
+    qemu_mutex_lock_iothread();
+    atomic_mb_set(&cpu->exit_request, 0);
+    //qemu_tcg_wait_io_event(cpu ? cpu : QTAILQ_FIRST(&cpus));
+    qemu_mutex_unlock_iothread();
+    cpu_exec_start(cpu);
 
+}
+*/
 /* Destroy any remaining vCPUs which have been unplugged and have
  * finished running
  */
@@ -1474,9 +1530,12 @@ static void CALLBACK dummy_apc_func(ULONG_PTR unused)
 
 #ifdef MEM_MAPPING
 
+
 CPUState *restart_cpu = NULL;    /* cpu to restart */
 int first_wants_to_stop = 0;
-
+extern int ask_addr;
+extern uintptr_t res_addr;
+extern int tmp_not_exit;
 
 static void *qemu_tcg_cpu_thread_fn(void *arg)
 {
@@ -1532,16 +1591,28 @@ static void *qemu_tcg_cpu_thread_fn(void *arg)
             {
                 first_wants_to_stop = 1;
             }
+            else if(tcg_handle_addr)
+            {
+                tcg_handle_addr = 0;
+                write_addr(ask_addr, res_addr);
+            }
             else
             {
                 CPUArchState *e = first_cpu->env_ptr;
+                if(tmp_not_exit)
+                {
+                    printf("singal 4194\n");
+                    e->active_tc.PC = 0;
+                }
                 write_state(e);
             }    
             restart_cpu = first_cpu;
-            first_cpu = NULL;
+            first_cpu = NULL; //make qemu_tcg_wait_io_event hang
         }
         atomic_mb_set(&cpu->exit_request, 0);
         qemu_tcg_wait_io_event(cpu ? cpu : QTAILQ_FIRST(&cpus));
+        //if(afl_user_fork) DECAF_printf("after qemu_tcg_wait_io_event\n");
+    
         /*
         if(!syscall_request)
         {
@@ -1554,79 +1625,6 @@ static void *qemu_tcg_cpu_thread_fn(void *arg)
 }
 
 
-/*
-static void *qemu_tcg_cpu_thread_fn(void *arg)
-{
-
-
-    CPUState *cpu = arg;
-
-    g_assert(!use_icount);
-
-    rcu_register_thread();
-
-    qemu_mutex_lock_iothread();
-    qemu_thread_get_self(cpu->thread);
-
-    cpu->thread_id = qemu_get_thread_id();
-    cpu->created = true;
-    cpu->can_do_io = 1;
-    current_cpu = cpu;
-    qemu_cond_signal(&qemu_cpu_cond);
-
-    cpu->exit_request = 1;
-
-    while (!afl_wants_cpu_to_stop) {
-        if (cpu_can_run(cpu)) {
-            int r;
-            r = tcg_cpu_exec(cpu);
-            switch (r) {
-            case EXCP_DEBUG:
-                cpu_handle_guest_debug(cpu);
-                break;
-            case EXCP_HALTED:
-                g_assert(cpu->halted);
-                break;
-            case EXCP_ATOMIC:
-                qemu_mutex_unlock_iothread();
-                cpu_exec_step_atomic(cpu);
-                qemu_mutex_lock_iothread();
-            default:
-                break;
-            }
-        } else if (cpu->unplug) {
-            qemu_tcg_destroy_vcpu(cpu);
-            cpu->created = false;
-            qemu_cond_signal(&qemu_cpu_cond);
-            qemu_mutex_unlock_iothread();
-            return NULL;
-        }
-
-        atomic_mb_set(&cpu->exit_request, 0);
-        qemu_tcg_wait_io_event(cpu ? cpu : QTAILQ_FIRST(&cpus));
-    }
-
-    if(afl_wants_cpu_to_stop) {
-        afl_wants_cpu_to_stop = 0;
-        if(first_wants_to_stop == 0)
-        {
-            first_wants_to_stop = 1;
-        }
-        else
-        {
-            CPUArchState *e = first_cpu->env_ptr;
-            write_state(e);
-        }    
-        restart_cpu = first_cpu;
-        first_cpu = NULL;
-        DECAF_printf("afl_wants_cpu_to_stop\n");
-        cpu_disable_ticks();
-        qemu_tcg_wait_io_event(cpu ? cpu : QTAILQ_FIRST(&cpus));
-    }
-    return NULL;
-
-}
-*/
 
 #elif defined(FUZZ)
 extern int afl_user_fork;
@@ -1721,7 +1719,8 @@ static void *qemu_tcg_cpu_thread_fn(void *arg)
 
 
 #else
-
+//extern int io_flag;
+//extern int block_flag;
 static void *qemu_tcg_cpu_thread_fn(void *arg)
 {
 
@@ -1770,11 +1769,12 @@ static void *qemu_tcg_cpu_thread_fn(void *arg)
         }
 
         atomic_mb_set(&cpu->exit_request, 0);
-        qemu_tcg_wait_io_event(cpu ? cpu : QTAILQ_FIRST(&cpus));
+        qemu_tcg_wait_io_event(cpu ? cpu : QTAILQ_FIRST(&cpus));    
     }
 
     if(afl_wants_cpu_to_stop) {
         afl_user_fork = 1;
+
         afl_wants_cpu_to_stop = 0;
         if(stop_times == 0)
         {
@@ -2031,7 +2031,7 @@ static void qemu_tcg_init_vcpu(CPUState *cpu)
         cpu->thread = g_malloc0(sizeof(QemuThread));
         cpu->halt_cond = g_malloc0(sizeof(QemuCond));
         qemu_cond_init(cpu->halt_cond);
-	
+
         if (1) {
 	//if (qemu_tcg_mttcg_enabled()) {
             /* create a thread per vCPU with TCG (MTTCG) */
@@ -2122,17 +2122,33 @@ void restart()
         
         single_tcg_cpu_thread = NULL;
         first_cpu = restart_cpu;
-        //cpu_enable_ticks();
+        first_cpu->halted = 0; //add at July 16, 2019
+        cpu_enable_ticks();
         first_cpu->interrupt_request = 0; //important;
         first_cpu->exception_index = -1; 
-        qemu_cond_broadcast(first_cpu->halt_cond); 
-#ifdef TARGET_MIPS
-        //CPUArchState *e = first_cpu->env_ptr;
-        //DECAF_printf("restart start:%x\n", e->active_tc.PC);
-#endif
-        //qemu_tcg_init_vcpu(first_cpu); //zyw
-       // qemu_account_warp_timer();
-        //DECAF_printf("restart end\n");
+        qemu_cond_broadcast(first_cpu->halt_cond);
+}
+
+
+void fork_test()
+{
+    int pid = fork();
+    if(!pid)
+    {
+
+        exit(0);
+
+    }
+    else
+    {
+        struct timeval end_time;
+        gettimeofday(&end_time, NULL);
+        printf("test child end time: %d, %d\n", end_time.tv_sec, end_time.tv_usec);
+        int status = 0;
+        if (waitpid(pid, &status, 0) < 0) exit(6);
+        gettimeofday(&end_time, NULL);
+        printf("test parent end time: %d, %d\n", end_time.tv_sec, end_time.tv_usec);
+    }
 }
 
 //extern void cpu_mips_irq_request(void *opaque, int irq, int level);
@@ -2156,14 +2172,12 @@ gotPipeNotification(void *ctx)
         DECAF_printf("gotPipeNotification:%x\n",restart_cpu);
         //env = NULL; //XXX for now.. if we want to share JIT to the parent we will need to pass in a real env here
         env = restart_cpu->env_ptr;
-
         afl_setup();
 //zyw
 #ifndef QEMU_SNAPSHOT
 #ifdef FORK_OR_NOT
         afl_forkserver(env);
-        //qemu_irq *qi;
-        //qi = qemu_allocate_irqs(cpu_mips_irq_request, mips_env_get_cpu(env), 8);
+        spawn_thread_after_fork();
         single_tcg_cpu_thread = NULL;
         first_cpu = restart_cpu;
         cpu_enable_ticks();
@@ -2185,14 +2199,7 @@ gotPipeNotification(void *ctx)
         env = restart_cpu->env_ptr;
         afl_noforkserver_restart(env, 0);
         restart();
-        /*
-        cpu_enable_ticks();
-        //DECAF_printf("restart cpu:%x\n", env->active_tc.PC);
-        single_tcg_cpu_thread = NULL;
-        first_cpu = restart_cpu;
-        qemu_tcg_init_vcpu(restart_cpu); //zyw
-        qemu_account_warp_timer();
-        */
+
 
     }   
     else if(strcmp(buf, "CRA") == 0)
@@ -2200,14 +2207,6 @@ gotPipeNotification(void *ctx)
         env = restart_cpu->env_ptr;
         afl_noforkserver_restart(env, 32);
         restart();
-        /*
-        cpu_enable_ticks();
-        //DECAF_printf("restart cpu:%x\n", env->active_tc.PC);
-        single_tcg_cpu_thread = NULL;
-        first_cpu = restart_cpu;
-        qemu_tcg_init_vcpu(restart_cpu); //zyw
-        qemu_account_warp_timer();
-        */
 
     }     
 }

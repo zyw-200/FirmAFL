@@ -32,8 +32,8 @@
 #include <sys/shm.h>
 #include "../../config.h"
 
-FILE *file_log=NULL;
-int iteration_times = 0;
+//FILE *file_log=NULL;
+//int iteration_times = 0;
 
 
 /***************************
@@ -55,7 +55,7 @@ int iteration_times = 0;
 
 
 #define AFL_QEMU_CPU_SNIPPET2 do { \
-    afl_maybe_log(itb->pc); \
+    afl_maybe_log(env->active_tc.PC); \
   } while (0)
 /*
 #define AFL_QEMU_CPU_SNIPPET2 do { \
@@ -277,7 +277,7 @@ void afl_forkserver(CPUArchState *env){
 //zyw
       //memset(afl_area_ptr, 0, 65536*sizeof(unsigned char));
 
-
+      //DECAF_printf("new iteration\n");
       gettimeofday(&loop_begin, NULL);
 //     
       afl_fork_child = 1;
@@ -285,6 +285,7 @@ void afl_forkserver(CPUArchState *env){
       close(FORKSRV_FD + 1);
       close(t_fd[0]);
       return;
+      
 
     }
     /* Parent. */
@@ -300,10 +301,9 @@ void afl_forkserver(CPUArchState *env){
     if (write(FORKSRV_FD + 1, &child_pid, 4) != 4) exit(5);
 
     /* Collect translation requests until child dies and closes the pipe. */
-    afl_wait_tsl(cpu, t_fd[0]);
-
+    //afl_wait_tsl(cpu, t_fd[0]);
     /* Get and relay exit status to parent. */
-    status = WEXITSTATUS(status);//zyw
+    //status = WEXITSTATUS(status);//zyw
     //printf("exit status:%d\n", status);
     if (waitpid(child_pid, &status, 0) < 0) exit(6);
     if (write(FORKSRV_FD + 1, &status, 4) != 4) exit(7);
@@ -330,6 +330,7 @@ static inline void afl_maybe_log(target_ulong cur_loc) {
     fprintf(file_log, "pc:%x\n", cur_loc);
   }
   */
+  
   /* Looks like QEMU always maps to fixed locations, so ASAN is not a
      concern. Phew. But instruction addresses may be aligned. Let's mangle
      the value to get something quasi-uniform. */

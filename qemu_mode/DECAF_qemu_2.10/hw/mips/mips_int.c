@@ -26,10 +26,8 @@
 #include "cpu.h"
 #include "sysemu/kvm.h"
 #include "kvm_mips.h"
-extern int afl_user_fork;
 
-void cpu_mips_irq_request(void *opaque, int irq, int level)
-//static void cpu_mips_irq_request(void *opaque, int irq, int level)
+static void cpu_mips_irq_request(void *opaque, int irq, int level)
 {
     MIPSCPU *cpu = opaque;
     CPUMIPSState *env = &cpu->env;
@@ -54,8 +52,6 @@ void cpu_mips_irq_request(void *opaque, int irq, int level)
     }
 
     if (env->CP0_Cause & CP0Ca_IP_mask) {
-        //if(afl_user_fork)
-            //printf("#######CPU_INTERRUPT_HARD:%x,%x,%x\n", env->CP0_Cause, irq, CP0Ca_IP);
         cpu_interrupt(cs, CPU_INTERRUPT_HARD);
     } else {
         cpu_reset_interrupt(cs, CPU_INTERRUPT_HARD);
