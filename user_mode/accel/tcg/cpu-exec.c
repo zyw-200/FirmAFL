@@ -708,9 +708,9 @@ int cpu_exec(CPUState *cpu)
 #else //fuzz with or without mapping, depend on MEM_MAPPING
             AFL_QEMU_CPU_SNIPPET2;
 #endif
-            target_ulong pc = env->active_tc.PC;
 
 #ifdef LMBENCH
+            //target_ulong pc = env->active_tc.PC;
             /*
             if(env->active_tc.PC == 0x401fec || env->active_tc.PC == 0x4007f0) //init 0x400954
             {
@@ -823,7 +823,7 @@ int cpu_exec(CPUState *cpu)
                 lmbench_count++;
                 gettimeofday(&lmbench_end, NULL);
                 double inter =  (double)(lmbench_end.tv_sec - lmbench_start.tv_sec)*1000000.0 + lmbench_end.tv_usec - lmbench_start.tv_usec;
-                printf("?????????????????/end:%d, time:%f\n", lmbench_count, inter/lmbench_times);
+                printf("??????????end:%d, time:%f\n", lmbench_count, inter/lmbench_times);
                 lmbench_total += inter/lmbench_times;
                 write_state(env, 0);
                 read_state(env->active_tc.PC, env);

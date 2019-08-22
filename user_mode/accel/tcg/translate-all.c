@@ -219,8 +219,7 @@ static uint8_t *encode_sleb128(uint8_t *p, target_long val)
    decoded value.  Return the decoded value.  */
 
 //zyw
-//static target_long decode_sleb128(uint8_t **pp)
-target_long decode_sleb128(uint8_t **pp)
+static target_long decode_sleb128(uint8_t **pp)
 {
     uint8_t *p = *pp;
     target_long val = 0;
@@ -2224,6 +2223,7 @@ void tcg_flush_softmmu_tlb(CPUState *cs)
 #endif
 }
 
+/*
 int ret_tb_pc(uintptr_t searched_pc)
 {
     TranslationBlock * tb = tb_find_pc(searched_pc);
@@ -2236,11 +2236,12 @@ int ret_tb_pc(uintptr_t searched_pc)
         return tb->pc;
     }
 }
-
+*/
+target_ulong ins_pc_analysis(uintptr_t searched_pc, int error_addr);
 target_ulong ins_pc_analysis(uintptr_t searched_pc, int error_addr)
 {
-    char buf[4];
-    int load_op[5] = {0x20, 0x24, 0x21, 0x25, 0x23, 0x39};  //0x39 lwc1
+    uint8_t buf[4];
+    int load_op[6] = {0x20, 0x24, 0x21, 0x25, 0x23, 0x39};  //0x39 lwc1
     int store_op[4] = {0x28, 0x29, 0x2b, 0x31};//0x31 swc1
     CPUArchState *env = first_cpu->env_ptr;
 

@@ -27,6 +27,11 @@
  */
 #include "zyw_config.h"
 
+int run_time = 0;
+
+
+
+
 int print_debug = 0;
 int libuclibc_addr;
 
@@ -37,6 +42,15 @@ int snapshot_shmem_id;
 
 target_ulong pre_map_page[2048];//jjhttpd 0x31000 //0x1000// 0x56000 //0x51000
 int pre_map_index = 0;
+
+
+extern int pipe_read_fd;
+extern int pipe_write_fd;
+
+void add_premap_page(target_ulong pc);
+int if_premap_page(target_ulong pc);
+int if_page_pc(target_ulong pc);
+
 void add_premap_page(target_ulong pc)
 {
   assert(pc!=0);
@@ -66,6 +80,188 @@ int if_page_pc(target_ulong pc)
     return 0;
   }
 }
+int read_content(int pipe_fd, char *buf, int total_len);
+void write_aflcmd(int cmd, USER_MODE_TIME *user_mode_time);
+void write_aflcmd_complete(int cmd, USER_MODE_TIME *user_mode_time);
+int read_aflcmd(void);
+target_ulong startTrace(target_ulong start, target_ulong end);
+extern void exception_exit(int syscall_num);
+void cross_process_mutex_first_init(void);
+void cross_process_mutex_init(void);
+void cross_shamem_disconn(void);
+
+//zyw fix the all the pipe read error: no data, data is wrong;
+int read_content(int pipe_fd, char *buf, int total_len)
+{
+    int rest_len = total_len;
+    int read_len = 0;
+    int read_len_once = 0;
+    do
+    {
+        //printf("read_len:%x, rest_len:%x\n", read_len, rest_len);
+        read_len_once = read(pipe_fd, buf + read_len, rest_len);
+        if(read_len_once == -1)
+        {
+            continue;
+        }
+        rest_len -= read_len_once;
+        read_len += read_len_once;
+    }
+    while(rest_len!=0);
+    return read_len;
+
+}
+
+int read_aflcmd(void)
+{
+  int res = 0;
+  if(pipe_read_fd != -1)  
+  {    
+      int is_loop_over;
+      char recv_char;
+      res = read_content(pipe_read_fd, &recv_char, sizeof(int));
+      is_loop_over = recv_char;
+      if(res == -1)  
+      {  
+          fprintf(stderr, "read_aflcmd error on pipe\n");  sleep(1000);
+          exit(EXIT_FAILURE);  
+      }
+      printf("write aflcmd %d\n", is_loop_over); 
+      return is_loop_over;
+  }  
+  else {
+      printf("read pipe not open\n");
+      sleep(1000);
+      exit(EXIT_FAILURE);  
+  }
+}
+
+
+/*
+int write_aflcmd(int cmd, USER_MODE_TIME *user_mode_time)  
+{  
+    const char *fifo_name_user = "./user_cpu_state";  
+    int pipe_fd = -1;  
+    int res = 0;  
+    const int open_mode_user = O_WRONLY;  
+  
+    if(access(fifo_name_user, F_OK) == -1)  
+    {  
+        res = mkfifo(fifo_name_user, 0777);  
+        if(res != 0)  
+        { 
+            fprintf(stderr, "Could not create fifo %s\n", fifo_name_user);  
+            exit(EXIT_FAILURE);  
+        }  
+    } 
+
+    pipe_fd = open(fifo_name_user, open_mode_user);    
+    if(pipe_fd != -1)  
+    { 
+      int type = 2; 
+      res = write(pipe_fd, &type, sizeof(int));  
+      if(res == -1)  
+      {  
+        fprintf(stderr, "Write type on pipe\n");  
+        exit(EXIT_FAILURE);  
+      }
+      res = write(pipe_fd, &cmd, sizeof(int));  
+      if(res == -1)  
+      {  
+        fprintf(stderr, "Write error on pipe\n");  
+        exit(EXIT_FAILURE);  
+      }
+      res = write(pipe_fd, user_mode_time, sizeof(USER_MODE_TIME));  
+      if(res == -1)  
+      {  
+        fprintf(stderr, "Write error on pipe\n");  
+        exit(EXIT_FAILURE);  
+      }
+      if(print_debug)
+      {
+        printf("write cmd ok:%x\n", cmd);  
+      }
+      printf("write cmd ok:%x\n", cmd);  
+      close(pipe_fd);   
+    }  
+    else  
+        exit(EXIT_FAILURE);  
+  
+    return 1;  
+}  
+*/
+
+void write_aflcmd(int cmd, USER_MODE_TIME *user_mode_time)  
+{  
+    int res = 0;  
+  
+    if(pipe_write_fd != -1)  
+    { 
+      int type = 2; 
+      res = write(pipe_write_fd, &type, sizeof(int));  
+      if(res == -1)  
+      {  
+        fprintf(stderr, "Write type on pipe\n");  
+        exit(EXIT_FAILURE);  
+      }
+      res = write(pipe_write_fd, &cmd, sizeof(int));  
+      if(res == -1)  
+      {  
+        fprintf(stderr, "Write error on pipe\n");  
+        exit(EXIT_FAILURE);  
+      }
+      res = write(pipe_write_fd, user_mode_time, sizeof(USER_MODE_TIME));  
+      if(res == -1)  
+      {  
+        fprintf(stderr, "Write error on pipe\n");  
+        exit(EXIT_FAILURE);  
+      }
+      if(print_debug)
+      {
+        printf("write cmd ok:%x\n", cmd);  
+      }
+    }  
+    else
+    {
+      printf("write aflcmd pipe_write_fd -1\n");
+      sleep(1000);
+      exit(EXIT_FAILURE);  
+    }
+} 
+
+void write_aflcmd_complete(int cmd, USER_MODE_TIME *user_mode_time) 
+{
+  int count = 0;
+  int not_ready = 1;
+  while(not_ready)
+  {
+    write_aflcmd(cmd, user_mode_time);
+    int is_loop_over = read_aflcmd();
+    printf("read aflcmd:%d\n", is_loop_over);
+    if(cmd == 0x10 && is_loop_over)
+    {
+      not_ready = 0;
+    }
+    else if(cmd == 0x20 && !is_loop_over)
+    {
+      not_ready = 0;
+    }
+    else
+    {
+      count++;
+      not_ready = 1;
+      printf("not ready:%d,%d\n", cmd, is_loop_over);
+      if(count == 5)
+      {
+        sleep(100000);
+      }
+    }
+  }
+}
+
+
+
+
 
 #ifdef SNAPSHOT_SYNC
 
@@ -75,6 +271,21 @@ int syn_shmem_id = 0;
 #endif
 
 #endif
+
+
+#if defined(MAPPING_WITHOUT_FUZZ)
+static void start_run(void) {
+  if(run_time == 0)
+  {
+    run_time = 1;
+    int cmd = 0x10;// start mem write callback
+    USER_MODE_TIME user_mode_time;
+    write_aflcmd_complete(cmd,  &user_mode_time);
+  }
+ 
+}
+#endif
+
 
 #include <sys/shm.h>
 #include "../../config.h"
@@ -218,18 +429,7 @@ static void afl_setup(void) {
 
 }
 
-int run_time = 0;
 
-static void start_run() {
-  if(run_time == 0)
-  {
-    run_time = 1;
-    int cmd = 0x10;// start mem write callback
-    USER_MODE_TIME user_mode_time;
-    write_aflcmd_complete(cmd,  &user_mode_time);
-  }
- 
-}
 
 
 /* Fork server logic, invoked once we hit _start. */
@@ -375,7 +575,9 @@ static void afl_request_tsl(target_ulong pc, target_ulong cb, uint64_t flags) {
 pthread_mutex_t *p_mutex_shared = NULL;
 int shmid = -1;
 
-void cross_process_mutex_first_init()
+
+
+void cross_process_mutex_first_init(void)
 {
     key_t key_id = ftok(".", 1);
     //printf("???????????? key_id:%d\n", key_id);
@@ -384,17 +586,16 @@ void cross_process_mutex_first_init()
     if (shmid < 0)
     {
         perror("shmget() create failed");
-        return -1;
+        sleep(1000); 
     }
     printf("shmget() create success, shmid is %d.\n", shmid);
  
     p_mutex_shared = shmat(shmid, NULL, 0);
     if (p_mutex_shared == (void *)-1)
     {
-        perror("shmat() failed");
-
-        shmctl(shmid, IPC_RMID, 0);
-        return -2;
+      shmctl(shmid, IPC_RMID, 0);
+      perror("shmat() failed");
+      sleep(1000); 
     }
     printf("shmat() success.\n");
  
@@ -405,25 +606,25 @@ void cross_process_mutex_first_init()
     pthread_mutex_init(p_mutex_shared, &mutextattr);
 }
 
-void cross_process_mutex_init()
+void cross_process_mutex_init(void)
 {
     key_t key_id = ftok(".", 1);
     shmid = shmget(key_id, 0, 0);
     if (shmid < 0)
     {
         perror("shmget() failed");
-        return -1;
+        sleep(1000); 
     }
     p_mutex_shared = shmat(shmid, NULL, 0);
     if (p_mutex_shared == NULL)
     {
         perror("shmat() failed");
-        return -2;
+        sleep(1000); 
     }
 }
 
 
-void cross_shamem_disconn()
+void cross_shamem_disconn(void)
 {
     if (shmdt(p_mutex_shared) == -1)
     {
@@ -472,96 +673,6 @@ static void afl_wait_tsl(CPUState *cpu, int fd) {
 
 }
 
-
-#ifdef MEM_MAPPING
-
-
-int write_aflcmd(int cmd, USER_MODE_TIME *user_mode_time)  
-{  
-    const char *fifo_name_user = "./user_cpu_state";  
-    int pipe_fd = -1;  
-    int res = 0;  
-    const int open_mode_user = O_WRONLY;  
-  
-    if(access(fifo_name_user, F_OK) == -1)  
-    {  
-        res = mkfifo(fifo_name_user, 0777);  
-        if(res != 0)  
-        { 
-            fprintf(stderr, "Could not create fifo %s\n", fifo_name_user);  
-            exit(EXIT_FAILURE);  
-        }  
-    } 
-
-    pipe_fd = open(fifo_name_user, open_mode_user);    
-    if(pipe_fd != -1)  
-    { 
-      int type = 2; 
-      res = write(pipe_fd, &type, sizeof(int));  
-      if(res == -1)  
-      {  
-        fprintf(stderr, "Write type on pipe\n");  
-        exit(EXIT_FAILURE);  
-      }
-      res = write(pipe_fd, &cmd, sizeof(int));  
-      if(res == -1)  
-      {  
-        fprintf(stderr, "Write error on pipe\n");  
-        exit(EXIT_FAILURE);  
-      }
-      res = write(pipe_fd, user_mode_time, sizeof(USER_MODE_TIME));  
-      if(res == -1)  
-      {  
-        fprintf(stderr, "Write error on pipe\n");  
-        exit(EXIT_FAILURE);  
-      }
-      if(print_debug)
-      {
-        printf("write cmd ok:%x\n", cmd);  
-      }
-      printf("write cmd ok:%x\n", cmd);  
-      close(pipe_fd);   
-    }  
-    else  
-        exit(EXIT_FAILURE);  
-  
-    return 1;  
-}  
-
-
-
-int write_aflcmd_complete(int cmd, USER_MODE_TIME *user_mode_time) 
-{
-  int count = 0;
-  int not_ready = 1;
-  while(not_ready)
-  {
-    write_aflcmd(cmd, user_mode_time);
-    int is_loop_over = read_aflcmd();
-    printf("read aflcmd:%d\n", is_loop_over);
-    if(cmd == 0x10 && is_loop_over)
-    {
-      not_ready = 0;
-    }
-    else if(cmd == 0x20 && !is_loop_over)
-    {
-      not_ready = 0;
-    }
-    else
-    {
-      count++;
-      not_ready = 1;
-      printf("not ready:%d,%d\n", cmd, is_loop_over);
-      if(count == 5)
-      {
-        sleep(100000);
-      }
-    }
-  }
-  
-}
-
-
 target_ulong startTrace(target_ulong start, target_ulong end)
 {
     afl_start_code = start;
@@ -569,5 +680,3 @@ target_ulong startTrace(target_ulong start, target_ulong end)
     return 0;
 }
 
-
-#endif

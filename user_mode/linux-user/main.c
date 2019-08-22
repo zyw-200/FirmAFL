@@ -85,6 +85,7 @@ static void read_ptr(CPUState* cpu, int vaddr, uint32_t *pptr)
 #endif
 }
 
+/*
 static void write_ptr(CPUState* cpu, int vaddr, int pptr_addr)
 {
 #ifdef TARGET_WORDS_BIGENDIAN
@@ -93,6 +94,7 @@ static void write_ptr(CPUState* cpu, int vaddr, int pptr_addr)
     cpu_memory_rw_debug(cpu, vaddr, &pptr_addr, 4, 1);
 
 }
+*/
 
 char program_analysis[256];
 char * aflFile;
@@ -122,7 +124,12 @@ void getconfig(char *keywords, char *res)
     assert(fp);
     while (!feof(fp)) 
     { 
-        fgets(StrLine,256,fp);
+        char * res = fgets(StrLine,256,fp);
+        if(res == NULL)
+        {
+            printf("FirmAFL_config has no content\n");
+            exit(0);
+        }
         char * key = strtok(StrLine, "=");
         char * value = strtok(NULL, "=");
         int val_len = strlen(value);
@@ -189,6 +196,17 @@ typedef struct MISSING_PAGE{
 int file_opti = 0;
 int file_fds[100];
 int fd_index = 0;
+
+
+int write_state(CPUArchState *env, target_ulong address);
+int write_addr(MISSING_PAGE *page);
+int read_state(target_ulong pc, CPUArchState *env);
+int read_addr(target_ulong ori_addr, uintptr_t *addr);
+
+extern void cross_process_mutex_first_init(void);
+extern void cross_process_mutex_init(void);
+extern void cross_shamem_disconn(void);
+
 void add_local_fd(int fd)
 {
     file_fds[fd_index++] = fd;
@@ -625,6 +643,12 @@ int if_memory_rw(int page_addr, int rw)
     {
         assert(mem_w_bm);
         return (mem_w_bm[index] & (1 << position)) !=0; 
+    }
+    else
+    {
+        printf("error in if_memory_rw\n");
+        assert(-1);
+        return 0;
     }
 }
 
@@ -3412,7 +3436,7 @@ void cpu_loop(CPUMIPSState *env)
                     }
                 }
 #endif               
-                
+
 #ifdef LMBENCH //lmbench use fork system call for lat_pipe
                 if(condition)
 #else                   
@@ -6533,7 +6557,7 @@ void storeCPUShState(CPUSHSTATE *state, CPUArchState *env)
 }
 
 char stored_vaddr_page[65536];
-int add_store_write_page(int vaddr)
+void add_store_write_page(int vaddr)
 {
     int value = vaddr >> 12;
     int index = value >> 3;
@@ -6541,7 +6565,7 @@ int add_store_write_page(int vaddr)
     stored_vaddr_page[index] |=  1 << position;
 }
 
-int delete_store_write_page(int vaddr)
+void delete_store_write_page(int vaddr)
 {
     int value = vaddr >> 12;
     int index = value >> 3;
@@ -6569,6 +6593,7 @@ target_ulong h2g_child(unsigned long x)
     {
         bug_exit(0xfffffffe);
     }
+    return 0;
 }
 
 
@@ -6631,11 +6656,12 @@ static void handler(int sig_num, siginfo_t *si, void *ptr)
             if(prot == 0 || prot == 2)
             {
                 uintptr_t res = target_mmap(error_addr & 0xfffff000, 1024*4, PROT_READ, MAP_SHARED | MAP_FIXED,  mem_file_fd, phys_addr & 0xfffff000);
+                assert(res>0);
             }
             else if(prot == 1)
             {
                 uintptr_t res = target_mmap(error_addr & 0xfffff000, 1024*4, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_FIXED,  mem_file_fd, phys_addr & 0xfffff000);
-
+                assert(res>0);
             }
         
             //read_addr(&phys_addr);
@@ -6736,11 +6762,12 @@ static void handler(int sig_num, siginfo_t *si, void *ptr)
         if(page.prot == 0 || page.prot == 2)
         {
             uintptr_t res = target_mmap(h2g(si->si_addr) & 0xfffff000, 1024*4, PROT_READ, MAP_SHARED | MAP_FIXED,  mem_file_fd, file_offset);
+            assert(res>0);
         }
         else if(page.prot == 1)
         {
             uintptr_t res = target_mmap(h2g(si->si_addr) & 0xfffff000, 1024*4, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_FIXED,  mem_file_fd, file_offset);
-
+            assert(res>0);
         }
         else{
             printf("page prot error:%x\n", page.prot);
@@ -6803,23 +6830,24 @@ static void handler(int sig_num, siginfo_t *si, void *ptr)
 }
 #endif
 
-int parse_mapping_table(char *filename)
+void parse_mapping_table(char *filename)
 {
     
     char strline[100];
+    char * res;
     FILE *fp = fopen(filename, "r");
     if(fp == NULL){
         printf("file open error\n");sleep(1000);
         exit(32);
     }
-    fgets(strline, 100, fp);
+    res = fgets(strline, 100, fp);
     hva_start = strtol(strline,NULL, 16);
-    fgets(strline, 100, fp);
+    res = fgets(strline, 100, fp);
     start_fork_pc = strtol(strline, NULL, 16);
 
     for(int i = 0; i < 36; i++)
     {
-        fgets(strline, 100, fp);
+        res = fgets(strline, 100, fp);
         init_regs[i] = strtol(strline,NULL, 16);
     }
 
@@ -6828,7 +6856,7 @@ int parse_mapping_table(char *filename)
         gva_start[i] = 0;
         gva_end[i] = 0;
     }
-    while(fgets(strline, 100, fp)!=NULL){
+    while(res = fgets(strline, 100, fp)!=NULL){
         if(strstr(strline, "####"))
         {
             break;
@@ -6860,7 +6888,7 @@ int parse_mapping_table(char *filename)
         vir_spa_index ++;
     }
 
-    while(fgets(strline, 100, fp)!=NULL){
+    while(res = fgets(strline, 100, fp)!=NULL){
         if(strstr(strline, "####"))
         {
             break;
@@ -6874,17 +6902,17 @@ int parse_mapping_table(char *filename)
         vir_phy_index ++;
     }
 #ifdef SNAPSHOT_SYNC
-    fgets(strline, 100, fp);
+    res = fgets(strline, 100, fp);
     syn_shmem_id = strtol(strline,NULL, 10);
 #endif
-    fgets(strline, 100, fp);
+    res = fgets(strline, 100, fp);
     accept_fd = strtol(strline, NULL, 10);
-    fgets(strline, 100, fp);
+    res = fgets(strline, 100, fp);
     CP0_UserLocal = strtol(strline, NULL, 16);
     fclose(fp);
 }
 
-int open_write_pipe()
+void open_write_pipe()
 {
     int res = 0;
     if(pipe_write_fd == -1){
@@ -6905,7 +6933,7 @@ int open_write_pipe()
     }
 }  
 
-int open_read_pipe()
+void open_read_pipe()
 {
     int res = 0;
     if(pipe_read_fd == -1){
@@ -6930,6 +6958,7 @@ int open_read_pipe()
     }
       
 }  
+
 
 
 int write_state(CPUArchState *env, target_ulong address)  
@@ -6982,27 +7011,8 @@ type
 
 */
 
-//zyw fix the all the pipe read error: no data, data is wrong;
-int read_content(int pipe_fd, char *buf, int total_len)
-{
-    int rest_len = total_len;
-    int read_len = 0;
-    int read_len_once = 0;
-    do
-    {
-        //printf("read_len:%x, rest_len:%x\n", read_len, rest_len);
-        read_len_once = read(pipe_fd, buf + read_len, rest_len);
-        if(read_len_once == -1)
-        {
-            continue;
-        }
-        rest_len -= read_len_once;
-        read_len += read_len_once;
-    }
-    while(rest_len!=0);
-    return read_len;
 
-}
+
 
 int write_addr(MISSING_PAGE *page)  
 {  
@@ -7030,28 +7040,6 @@ int write_addr(MISSING_PAGE *page)
 
     return 1;  
 }  
-
-int read_aflcmd()
-{
-  int res = 0;
-  if(pipe_read_fd != -1)  
-  {    
-      int is_loop_over;
-      res = read_content(pipe_read_fd, &is_loop_over, sizeof(int));
-      if(res == -1)  
-      {  
-          fprintf(stderr, "read_aflcmd error on pipe\n");  sleep(1000);
-          exit(EXIT_FAILURE);  
-      }
-      printf("write aflcmd %d\n", is_loop_over); 
-      return is_loop_over;
-  }  
-  else {
-      printf("read pipe not open\n");
-      sleep(1000);
-      exit(EXIT_FAILURE);  
-  }
-}
 
 
 int read_state(target_ulong pc, CPUArchState *env)  
@@ -7275,6 +7263,7 @@ void handle_store(CPUArchState *env, target_ulong pc, target_ulong page_addr)
             }
             int file_offset = (mmap_addr - hva_start) & 0xfffffffffffff000;
             uintptr_t res  = target_mmap(page_addr, 1024*4, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_FIXED,  mem_file_fd, file_offset);
+            assert(res>0);
             //add_write_mapped_vaddr(page_addr);
 #ifdef STORE_PAGE_FUNC
             addr_pair[addr_pair_index].virt_page = page_addr;
@@ -7414,7 +7403,7 @@ void restore_page_exception()
 }
 
 //remember not to free page 
-void restore_page()
+void restore_page(void)
 {
     //printf("restore_page start\n");
     for(int i=0; i<0x1000; i++)
@@ -7452,7 +7441,7 @@ void restore_page()
 
 //snapshot consistence
 #ifdef SNAPSHOT_SYNC
-int add_physical_page(int phys_addr)
+void add_physical_page(int phys_addr)
 {
     int value = phys_addr >> 12;
     int index = value >> 3;
