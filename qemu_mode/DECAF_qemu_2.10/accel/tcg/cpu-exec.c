@@ -146,6 +146,16 @@ int write_addr(uintptr_t ori_addr, uintptr_t addr);
 #include "sysemu/cpus.h"
 #include "sysemu/replay.h"
 
+//zyw
+#ifdef TARGET_ARM
+typedef struct ARMMMUFaultInfo ARMMMUFaultInfo;
+struct ARMMMUFaultInfo {
+    target_ulong s2addr;
+    bool stage2;
+    bool s1ptw;
+};
+#endif
+
 int total_count = 10000;
 int count = 0;
 int tmptmptmp = 0;
@@ -1866,6 +1876,7 @@ int cpu_exec(CPUState *cpu)
 
 #endif 
         int cond = 0;
+#ifdef TARGET_MIPS
         if(program_id == 105600)
         {
             cond = ((pgd == httpd_pgd) && ((env->active_tc.gpr[29] & 0xfff00000)==stack_mask));
@@ -1874,7 +1885,9 @@ int cpu_exec(CPUState *cpu)
         {
             cond = (pgd == httpd_pgd);
         }
-        
+#elif defined(TARGET_ARM)
+        cond = (pgd == httpd_pgd);
+#endif
         if(cond){
 #endif
 #ifdef CAL_TIME
@@ -2112,6 +2125,7 @@ int cpu_exec(CPUState *cpu)
             int a2 = env->regs[2];
             into_syscall = env->regs[0];
             curr_state_pc = env->regs[15];
+            before_syscall_stack = env->regs[13];
             if(into_syscall == 93 || into_syscall == 1079 || into_syscall == 94){
                 if_exit = 1;
             }
@@ -2169,6 +2183,7 @@ skip_to_pos:
             target_ulong ra = env->regs[14];
             target_ulong ret = env->regs[0];
             target_ulong err = 0; //???
+            target_ulong stack = env->regs[13]; //???????
 
 #endif
 
@@ -2207,7 +2222,7 @@ skip_to_pos:
                 {
                     into_syscall = 0;
                     cpu->exception_index = -1;
-                    stack_mask = env->active_tc.gpr[29] & 0xfff00000;
+                    stack_mask = stack & 0xfff00000;
                     start_fork_pc = pc;
                     DECAF_printf("start fork pc:%x\n", pc);
                 }
@@ -2250,9 +2265,9 @@ skip_to_pos:
 #else
                     if(pgd == httpd_pgd) {
 #endif
-                        stack_mask = env->active_tc.gpr[29] & 0xfff00000;
+                        stack_mask = stack & 0xfff00000;
                         ori_thread = cpu->thread_id;
-                        DECAF_printf("start fork stack:%x\n", env->active_tc.gpr[29]);
+                        DECAF_printf("start fork stack:%x\n", stack);
                         start_fork_pc = pc;
 
                     }
@@ -2338,7 +2353,7 @@ skip_to_pos:
                     fprintf(fp ,"%x\n", env->CP0_Status);
                     fprintf(fp ,"%x\n", env->CP0_Cause);
                     fprintf(fp ,"%x\n", env->CP0_EPC);
-                    printf("user pc:%x, stack:%x,  qemu pid:%x\n", env->active_tc.PC, env->active_tc.gpr[29], getpid());
+                    printf("user pc:%x, stack:%x,  qemu pid:%x\n", env->active_tc.PC, stack, getpid());
 #elif defined(TARGET_ARM)
                     for(int i=0;i<16;i++) {
                         fprintf(fp, "%x\n", env->regs[i]);
@@ -2417,7 +2432,7 @@ skip_to_pos:
 
             }
 #endif
-            if(afl_user_fork && pc ==  curr_state_pc + 4 && into_syscall && before_syscall_stack == env->active_tc.gpr[29])
+            if(afl_user_fork && pc ==  curr_state_pc + 4 && into_syscall && before_syscall_stack == stack)
             {
 
 #ifdef DECAF 
@@ -2444,7 +2459,7 @@ skip_to_pos:
                     */
                     
                     if(print_debug){
-                        DECAF_printf("end syscall:%d, pc:%x,stack:%x, ra:%x, ret:%x, err:%x, interrupt:%d\n", into_syscall, pc, env->active_tc.gpr[29], ra, ret, err, cpu->interrupt_request); 
+                        DECAF_printf("end syscall:%d, pc:%x,stack:%x, ra:%x, ret:%x, err:%x, interrupt:%d\n", into_syscall, pc, stack, ra, ret, err, cpu->interrupt_request); 
                     }
                     before_syscall_stack = 0;
 #ifdef CAL_TIME                  
@@ -3084,6 +3099,9 @@ int write_state(CPUArchState * env)
     return 1;
 } 
 
+
+#ifdef TARGET_MIPS
+
 MISSING_PAGE handle_page;
 int ask_addr = 0;
 uintptr_t res_addr;
@@ -3104,8 +3122,12 @@ void *qemu_handle_addr_thread_fn(void *arg)
     cpu->exception_index = -1;
     int ret = mips_cpu_handle_mmu_fault(cpu, addr, access_type, mmu_idx);
     int index = (addr >> 12) & (256 - 1);
-    target_ulong labelpc;
+#ifdef TARGET_MIPS
     target_ulong orig_pc = env->active_tc.PC;
+#elif defined TARGET_ARM 
+    target_ulong orig_pc = env->regs[15];
+#endif
+    
     void *t = env->tlb_table[mmu_idx][index].addend;
     if (qemu_mutex_iothread_locked()) {
         qemu_mutex_unlock_iothread();
@@ -3128,9 +3150,13 @@ void *qemu_handle_addr_thread_fn(void *arg)
                 TranslationBlock *last_tb = NULL;
                 int tb_exit = 0; 
                 while (!cpu_handle_interrupt(cpu, &last_tb)) {
-                     if(env->active_tc.PC < 0x80000000) {
-                        labelpc = env->active_tc.PC;     
-                        if(orig_pc == labelpc)
+#ifdef TARGET_MIPS
+                    target_ulong cur_pc = env->active_tc.PC;
+#elif defined TARGET_ARM 
+                    target_ulong cur_pc = env->regs[15];
+#endif                   
+                     if(cur_pc < 0x80000000) {   
+                        if(orig_pc == cur_pc)
                         {
                             goto label;
                         }                     
@@ -3164,6 +3190,103 @@ label:
 fail:
     res_addr = 0;
 }
+
+#elif defined(TARGET_ARM)
+
+MISSING_PAGE handle_page;
+int ask_addr = 0;
+uintptr_t res_addr;
+int tcg_handle_addr = 0;
+void *qemu_handle_addr_thread_fn(void *arg)
+{
+    CPUState *cpu = arg;
+    CPUArchState * env = cpu->env_ptr;
+    int status, child_pid;
+    target_ulong addr = handle_page.addr;
+    MMUAccessType access_type = handle_page.prot;        
+    int mmu_idx = handle_page.mmu_idx; 
+    current_cpu = cpu;
+
+    SyncClocks sc = { 0 };
+    init_delay_params(&sc, cpu);
+    cpu->interrupt_request = 0;// need???????????????
+    cpu->exception_index = -1;
+    
+    uint32_t fsr = 0;
+    ARMMMUFaultInfo fi = {};
+    int ret = tlb_fill_helper(cpu, addr, access_type, mmu_idx);
+    int index = (addr >> 12) & (256 - 1);
+#ifdef TARGET_MIPS
+    target_ulong orig_pc = env->active_tc.PC;
+#elif defined TARGET_ARM 
+    target_ulong orig_pc = env->regs[15];
+#endif
+    
+    void *t = env->tlb_table[mmu_idx][index].addend;
+    if (qemu_mutex_iothread_locked()) {
+        qemu_mutex_unlock_iothread();
+    }
+    while(ret == 1)
+    {
+
+        if (sigsetjmp(cpu->jmp_env, 0) != 0) {
+            cpu->can_do_io = 1;
+            tb_lock_reset();
+            if (qemu_mutex_iothread_locked()) {
+                qemu_mutex_unlock_iothread();
+            }
+        }
+
+        //printf("ret:%x, exception:%d, interupt:%d, pc:%x\n", ret, cpu->exception_index, cpu->interrupt_request, env->active_tc.PC);
+        int ret_excep;
+        while(true){
+            while (!cpu_handle_exception(cpu, &ret_excep)) {
+                TranslationBlock *last_tb = NULL;
+                int tb_exit = 0; 
+                while (!cpu_handle_interrupt(cpu, &last_tb)) {
+#ifdef TARGET_MIPS
+                    target_ulong cur_pc = env->active_tc.PC;
+#elif defined TARGET_ARM 
+                    target_ulong cur_pc = env->regs[15];
+#endif                   
+                     if(cur_pc < 0x80000000) {   
+                        if(orig_pc == cur_pc)
+                        {
+                            goto label;
+                        }                     
+                        
+                    }
+                    TranslationBlock *tb = tb_find(cpu, last_tb, tb_exit); 
+                    cpu_loop_exec_tb(cpu, tb, &last_tb, &tb_exit);
+                    if(mem_mapping_exit)
+                    {
+                        target_ulong pgd = DECAF_getPGD(cpu);
+                        if(pgd == httpd_pgd)
+                        {
+                            mem_mapping_exit = 0;
+                            printf("handle addr error\n");
+                            afl_wants_cpu_to_stop = 1; // BEFORE WRITE STATE
+                            goto fail;
+                        }
+                    }
+                    align_clocks(&sc, cpu);
+                }
+            } 
+            //printf("handler addr out of exception loop:%d,%d,%x\n", cpu->interrupt_request, cpu->exception_index, env->active_tc.PC);
+        }
+label:      
+        //printf("label ret:%d,%x\n", ret, addr); 
+        ret = tlb_fill_helper(cpu, addr, access_type, mmu_idx);
+        t = env->tlb_table[mmu_idx][index].addend;
+    }
+    res_addr = ((uintptr_t)addr + t);
+    return;
+fail:
+    res_addr = 0;
+}
+
+
+#endif
 
 
 extern CPUState *restart_cpu;

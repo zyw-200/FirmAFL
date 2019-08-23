@@ -117,7 +117,7 @@ double restore_page_total = 0.0;
 int store_count = 0;
 int user_syscall_count = 0;
 
-void getconfig(char *keywords, char *res)
+void getconfig(char *keywords, char *final_value)
 {
     FILE *fp = fopen("FirmAFL_config", "r");
     char StrLine[256];
@@ -139,7 +139,7 @@ void getconfig(char *keywords, char *res)
         } 
         if(strcmp(keywords, key) == 0)
         {
-            strcpy(res, value);
+            strcpy(final_value, value);
             break;
         }
     }
@@ -418,8 +418,13 @@ void prepare_feed_input(CPUState * cpu)
     else if (strcmp(feed_type, "FEED_CMD") == 0)
     {
         CPUArchState *env = cpu->env_ptr;
+#ifdef TARGET_MIPS
         int argv = env->active_tc.gpr[5];
+#elif defined(TARGET_ARM)
+        int argv = env->regs[1];
+#endif
         int cmd_addr = 0;
+
         int content_addr = 0;
         read_ptr(cpu, argv + 4, &cmd_addr);
         read_ptr(cpu, argv + 8, &content_addr);
@@ -671,6 +676,197 @@ int addr_pair_index = 0;
 #endif
 
 #endif
+
+#ifdef MEM_MAPPING
+int exception_count = 0;
+
+void exception_exit(int syscall_num)
+{
+    exception_count++;
+    printf("exception count:%d\n", exception_count);
+    gettimeofday(&restore_page_start, NULL);
+#ifdef STORE_PAGE_FUNC
+    printf("exception restore_page start\n");
+    restore_page_exception();  //zyw
+    printf("exception restore_page end\n");
+#endif
+    gettimeofday(&restore_page_end, NULL);
+    restore_page_total += (double)restore_page_end.tv_sec - restore_page_start.tv_sec + (restore_page_end.tv_usec - restore_page_start.tv_usec)/1000000.0;
+    /*
+    if(program_id == 129780 || program_id == 129781)
+    {
+        remove_tmp_files();
+    }
+    */
+    printf("gettimeofday over\n");
+    if( remove("/var/tmp") != 0 )
+    {
+        printf("remove var/tmp error\n");
+    }
+    if(mkdir("var/tmp", 0777)==-1)  
+    {   
+        printf("mkdir  var/tmp error\n");      
+    }
+    printf("clean var/tmp over\n");
+    if(program_id == 129781)
+    {
+        copy_file("/var/config/net.conf_ori", "/var/config/net.conf");
+    }     
+    printf("copy over\n");
+    int cmd = 0x20;// restore page
+    USER_MODE_TIME user_mode_time;
+    user_mode_time.handle_state_time = handle_state_total;
+    user_mode_time.handle_addr_time = handle_addr_total;
+    user_mode_time.handle_syscall_time = handle_syscall_total;
+    user_mode_time.store_page_time = store_page_total;
+    user_mode_time.restore_page_time = restore_page_total;
+    user_mode_time.user_syscall_count = user_syscall_count;
+    user_mode_time.store_count = store_count;
+    printf("exit status:%d\n\n\n\n\n\n", syscall_num);
+    //write_aflcmd(cmd, &user_mode_time);
+    write_aflcmd_complete(cmd, &user_mode_time);
+    if(print_debug)
+    {
+        printf("exit syscall:%d\n\n\n\n\n\n", syscall_num);
+    }
+}
+
+void normal_exit(int syscall_num)
+{
+    gettimeofday(&restore_page_start, NULL);
+#ifdef STORE_PAGE_FUNC
+    restore_page();  //zyw
+#endif
+    gettimeofday(&restore_page_end, NULL);
+    restore_page_total += (double)restore_page_end.tv_sec - restore_page_start.tv_sec + (restore_page_end.tv_usec - restore_page_start.tv_usec)/1000000.0;
+    if(program_id == 129780 || program_id == 129781)
+    {
+        remove_tmp_files();
+    }
+    if(program_id == 129781)
+    {
+        copy_file("/var/config/net.conf_ori", "/var/config/net.conf");
+    }     
+    
+    int cmd = 0x20;// restore page
+    USER_MODE_TIME user_mode_time;
+    user_mode_time.handle_state_time = handle_state_total;
+    user_mode_time.handle_addr_time = handle_addr_total;
+    user_mode_time.handle_syscall_time = handle_syscall_total;
+    user_mode_time.store_page_time = store_page_total;
+    user_mode_time.restore_page_time = restore_page_total;
+    user_mode_time.user_syscall_count = user_syscall_count;
+    user_mode_time.store_count = store_count;
+    printf("exit syscall:%d\n\n\n\n\n\n", syscall_num);
+    //write_aflcmd(cmd, &user_mode_time);
+    write_aflcmd_complete(cmd, &user_mode_time);
+    if(print_debug)
+    {
+        printf("exit syscall:%d\n\n\n\n\n\n", syscall_num);
+    }
+
+    exit(0);
+}
+
+void bug_exit(target_ulong addr)
+{
+    gettimeofday(&restore_page_start, NULL);
+#ifdef STORE_PAGE_FUNC
+    restore_page();  //zyw
+#endif
+    gettimeofday(&restore_page_end, NULL);
+    restore_page_total += (double)restore_page_end.tv_sec - restore_page_start.tv_sec + (restore_page_end.tv_usec - restore_page_start.tv_usec)/1000000.0;
+
+    if(program_id == 129780 || program_id == 129781)
+    {
+        remove_tmp_files();
+    }
+    if(program_id == 129781)
+    {
+        copy_file("/var/config/net.conf_ori", "/var/config/net.conf");
+    }   
+    int cmd = 0x20;// restore page
+    USER_MODE_TIME user_mode_time;
+    user_mode_time.handle_state_time = handle_state_total;
+    user_mode_time.handle_addr_time = handle_addr_total;
+    user_mode_time.handle_syscall_time = handle_syscall_total;
+    user_mode_time.store_page_time = store_page_total;
+    user_mode_time.restore_page_time = restore_page_total;
+    user_mode_time.user_syscall_count = user_syscall_count;
+    user_mode_time.store_count = store_count;
+    //write_aflcmd(cmd, &user_mode_time);
+    write_aflcmd_complete(cmd, &user_mode_time);
+    /*
+    if(pipe_read_fd != -1)
+    {
+        close(pipe_read_fd);
+    }
+    if(pipe_write_fd != -1)
+    {
+        close(pipe_write_fd);
+    }
+    */
+    if(addr == 0)
+    {
+        printf("page addr 0\n");
+        exit(0);
+    }
+    else
+    {
+#ifdef TARGET_MIPS
+        CPUArchState *env = first_cpu->env_ptr;
+        printf("exit with error:%x\n", addr);
+        //printf("last pc:%x,CP0_UserLocal:%x\n", last_pc,env->active_tc.CP0_UserLocal);
+#endif
+        exit(32);
+    }
+}
+#endif
+
+int tmp_file_count = 0;
+char tmp_file_names[200][100];
+void add_tmp_file(char * filename)
+{   
+    //printf("filename:%s\n", filename);
+    if(strstr(filename,"/tmp/tmpf"))
+    {
+        //printf("add tmp file:%s\n", filename);
+        strncpy(tmp_file_names[tmp_file_count], filename, 100);
+        tmp_file_count++;
+    }   
+}
+
+
+int copy_file(char *ori, char *dst)
+{
+
+    FILE *in,*out;
+    char buff[1024];
+    int len;
+
+    in = fopen(ori,"r+");
+    out = fopen(dst,"w+");
+    //printf("$$$$$$copy file:%d,%d\n",in, out);
+ 
+    while(len = fread(buff,1,sizeof(buff),in))
+    {
+        fwrite(buff,1,len,out);
+    }
+    fclose(in);
+    fclose(out);
+    return 0;
+}
+
+void remove_tmp_files()
+{
+    //4010 unlink remove file
+    for(int i=0; i<tmp_file_count; i++)
+    {
+        //printf("remove file:%s\n", tmp_file_names[i]);
+        remove(tmp_file_names[i]);
+    }
+}
+
 
 char *exec_path;
 
@@ -2866,195 +3062,6 @@ static int do_break(CPUMIPSState *env, target_siginfo_t *info,
     return ret;
 }
 
-#ifdef MEM_MAPPING
-int exception_count = 0;
-
-void exception_exit(int syscall_num)
-{
-    exception_count++;
-    printf("exception count:%d\n", exception_count);
-    gettimeofday(&restore_page_start, NULL);
-#ifdef STORE_PAGE_FUNC
-    printf("exception restore_page start\n");
-    restore_page_exception();  //zyw
-    printf("exception restore_page end\n");
-#endif
-    gettimeofday(&restore_page_end, NULL);
-    restore_page_total += (double)restore_page_end.tv_sec - restore_page_start.tv_sec + (restore_page_end.tv_usec - restore_page_start.tv_usec)/1000000.0;
-    /*
-    if(program_id == 129780 || program_id == 129781)
-    {
-        remove_tmp_files();
-    }
-    */
-    printf("gettimeofday over\n");
-    if( remove("/var/tmp") != 0 )
-    {
-        printf("remove var/tmp error\n");
-    }
-    if(mkdir("var/tmp", 0777)==-1)  
-    {   
-        printf("mkdir  var/tmp error\n");      
-    }
-    printf("clean var/tmp over\n");
-    if(program_id == 129781)
-    {
-        copy_file("/var/config/net.conf_ori", "/var/config/net.conf");
-    }     
-    printf("copy over\n");
-    int cmd = 0x20;// restore page
-    USER_MODE_TIME user_mode_time;
-    user_mode_time.handle_state_time = handle_state_total;
-    user_mode_time.handle_addr_time = handle_addr_total;
-    user_mode_time.handle_syscall_time = handle_syscall_total;
-    user_mode_time.store_page_time = store_page_total;
-    user_mode_time.restore_page_time = restore_page_total;
-    user_mode_time.user_syscall_count = user_syscall_count;
-    user_mode_time.store_count = store_count;
-    printf("exit status:%d\n\n\n\n\n\n", syscall_num);
-    //write_aflcmd(cmd, &user_mode_time);
-    write_aflcmd_complete(cmd, &user_mode_time);
-    if(print_debug)
-    {
-        printf("exit syscall:%d\n\n\n\n\n\n", syscall_num);
-    }
-}
-
-void normal_exit(int syscall_num)
-{
-    gettimeofday(&restore_page_start, NULL);
-#ifdef STORE_PAGE_FUNC
-    restore_page();  //zyw
-#endif
-    gettimeofday(&restore_page_end, NULL);
-    restore_page_total += (double)restore_page_end.tv_sec - restore_page_start.tv_sec + (restore_page_end.tv_usec - restore_page_start.tv_usec)/1000000.0;
-    if(program_id == 129780 || program_id == 129781)
-    {
-        remove_tmp_files();
-    }
-    if(program_id == 129781)
-    {
-        copy_file("/var/config/net.conf_ori", "/var/config/net.conf");
-    }     
-    
-    int cmd = 0x20;// restore page
-    USER_MODE_TIME user_mode_time;
-    user_mode_time.handle_state_time = handle_state_total;
-    user_mode_time.handle_addr_time = handle_addr_total;
-    user_mode_time.handle_syscall_time = handle_syscall_total;
-    user_mode_time.store_page_time = store_page_total;
-    user_mode_time.restore_page_time = restore_page_total;
-    user_mode_time.user_syscall_count = user_syscall_count;
-    user_mode_time.store_count = store_count;
-    printf("exit syscall:%d\n\n\n\n\n\n", syscall_num);
-    //write_aflcmd(cmd, &user_mode_time);
-    write_aflcmd_complete(cmd, &user_mode_time);
-    if(print_debug)
-    {
-        printf("exit syscall:%d\n\n\n\n\n\n", syscall_num);
-    }
-
-    exit(0);
-}
-
-void bug_exit(target_ulong addr)
-{
-    gettimeofday(&restore_page_start, NULL);
-#ifdef STORE_PAGE_FUNC
-    restore_page();  //zyw
-#endif
-    gettimeofday(&restore_page_end, NULL);
-    restore_page_total += (double)restore_page_end.tv_sec - restore_page_start.tv_sec + (restore_page_end.tv_usec - restore_page_start.tv_usec)/1000000.0;
-
-    if(program_id == 129780 || program_id == 129781)
-    {
-        remove_tmp_files();
-    }
-    if(program_id == 129781)
-    {
-        copy_file("/var/config/net.conf_ori", "/var/config/net.conf");
-    }   
-    int cmd = 0x20;// restore page
-    USER_MODE_TIME user_mode_time;
-    user_mode_time.handle_state_time = handle_state_total;
-    user_mode_time.handle_addr_time = handle_addr_total;
-    user_mode_time.handle_syscall_time = handle_syscall_total;
-    user_mode_time.store_page_time = store_page_total;
-    user_mode_time.restore_page_time = restore_page_total;
-    user_mode_time.user_syscall_count = user_syscall_count;
-    user_mode_time.store_count = store_count;
-    //write_aflcmd(cmd, &user_mode_time);
-    write_aflcmd_complete(cmd, &user_mode_time);
-    /*
-    if(pipe_read_fd != -1)
-    {
-        close(pipe_read_fd);
-    }
-    if(pipe_write_fd != -1)
-    {
-        close(pipe_write_fd);
-    }
-    */
-    if(addr == 0)
-    {
-        printf("page addr 0\n");
-        exit(0);
-    }
-    else
-    {
-#ifdef TARGET_MIPS
-        CPUArchState *env = first_cpu->env_ptr;
-        printf("exit with error:%x\n", addr);
-        //printf("last pc:%x,CP0_UserLocal:%x\n", last_pc,env->active_tc.CP0_UserLocal);
-#endif
-        exit(32);
-    }
-}
-#endif
-
-int tmp_file_count = 0;
-char tmp_file_names[200][100];
-void add_tmp_file(char * filename)
-{   
-    //printf("filename:%s\n", filename);
-    if(strstr(filename,"/tmp/tmpf"))
-    {
-        //printf("add tmp file:%s\n", filename);
-        strncpy(tmp_file_names[tmp_file_count], filename, 100);
-        tmp_file_count++;
-    }   
-}
-
-
-int copy_file(char *ori, char *dst)
-{
-
-    FILE *in,*out;
-    char buff[1024];
-    int len;
-
-    in = fopen(ori,"r+");
-    out = fopen(dst,"w+");
-    //printf("$$$$$$copy file:%d,%d\n",in, out);
- 
-    while(len = fread(buff,1,sizeof(buff),in))
-    {
-        fwrite(buff,1,len,out);
-    }
-    fclose(in);
-    fclose(out);
-    return 0;
-}
-
-void remove_tmp_files()
-{
-    //4010 unlink remove file
-    for(int i=0; i<tmp_file_count; i++)
-    {
-        //printf("remove file:%s\n", tmp_file_names[i]);
-        remove(tmp_file_names[i]);
-    }
-}
 
 int file_syscall_fd = -1;
 int local_or_not = 0;
@@ -5589,6 +5596,7 @@ int main(int argc, char **argv, char **envp)
 
 
     getconfig("program_analysis", program_analysis); 
+    printf("main is:%s\n", program_analysis);
     assert(strlen(program_analysis)>0);
     FirmAFL_config();
 #endif
@@ -6497,17 +6505,26 @@ int main(int argc, char **argv, char **envp)
 #endif
 
 
+#ifdef TARGET_MIPS
+
     env->active_tc.PC = init_regs[32];
     env->CP0_Status = init_regs[33];
     env->CP0_Cause = init_regs[34];
     env->CP0_EPC = init_regs[35];
-//zyw
-
     for(int k=0; k<32; k++)
     {
        env->active_tc.gpr[k] = init_regs[k]; //not i; should be k
     }
     printf("start pc:%x\n", env->active_tc.PC);
+
+#elif defined(TARGET_ARM)
+    for(int k=0; k<16; k++)
+    {
+       env->regs[k] = init_regs[k]; //not i; should be k
+    }
+    printf("start pc:%x\n", env->regs[15]);
+
+#endif
 
     startTrace(0x0, 0x7fffffff);
     afl_entry_point = start_fork_pc;
@@ -6517,12 +6534,14 @@ int main(int argc, char **argv, char **envp)
 #ifdef FEED_INPUT
     prepare_feed_input(cpu);
 #endif
+
+#ifdef TARGET_MIPS
     if(CP0_UserLocal!=0)
     {
         env->active_tc.CP0_UserLocal = CP0_UserLocal;
         printf("CP0_UserLocal:%x\n", CP0_UserLocal);
     }
-    //env->active_tc.CP0_UserLocal = 0xa98490;
+#endif
     cpu_loop(env);
     /* never exits */
     return 0;
@@ -6531,6 +6550,7 @@ int main(int argc, char **argv, char **envp)
 
 #ifdef MEM_MAPPING
 
+#ifdef TARGET_MIPS
 void loadCPUShState(CPUSHSTATE *state, CPUArchState *env)
 {
     for(int i=0; i<32; i++)
@@ -6555,6 +6575,27 @@ void storeCPUShState(CPUSHSTATE *state, CPUArchState *env)
     state->CP0_Cause = env->CP0_Cause; 
     state->CP0_EPC = env->CP0_EPC; 
 }
+
+#elif defined(TARGET_ARM)
+
+void loadCPUShState(CPUSHSTATE *state, CPUArchState *env)
+{
+    for(int i=0; i<16; i++)
+    {
+        env->regs[i] = state->regs[i];
+    }
+}
+
+void storeCPUShState(CPUSHSTATE *state, CPUArchState *env)
+{
+    for(int i=0; i<16; i++)
+    {
+        state->regs[i] =  env->regs[i];
+    }
+}
+
+#endif
+
 
 char stored_vaddr_page[65536];
 void add_store_write_page(int vaddr)
@@ -7064,7 +7105,9 @@ int read_state(target_ulong pc, CPUArchState *env)
         }
         */
         loadCPUShState(&cpustate, env);
+#ifdef  TARGET_MIPS
         printf("read state ok:%lx\n", env->active_tc.PC);
+#endif
     }  
     else {
         printf("read pipe not open\n");sleep(1000);
@@ -7102,7 +7145,9 @@ int read_addr(target_ulong ori_addr, uintptr_t *addr)
             fprintf(stderr, "read addr error on pipe\n");  sleep(1000);
             exit(EXIT_FAILURE);  
         }
-        //printf("read addr:%lx, %x\n", *addr, res); 
+#ifdef  TARGET_MIPS
+         //printf("read addr:%lx, %x\n", *addr, res); 
+#endif
     }  
     else {
         printf("read pipe not open\n");

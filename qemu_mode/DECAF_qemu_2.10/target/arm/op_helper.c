@@ -119,6 +119,75 @@ static inline uint32_t merge_syn_data_abort(uint32_t template_syn,
  * NULL, it means that the function was called in C code (i.e. not
  * from generated code or from helper.c)
  */
+void tlb_fill_helper(CPUState *cs, target_ulong addr, MMUAccessType access_type,
+              int mmu_idx, uintptr_t retaddr)
+{
+    bool ret;
+    uint32_t fsr = 0;
+    ARMMMUFaultInfo fi = {};
+
+    ret = arm_tlb_fill(cs, addr, access_type, mmu_idx, &fsr, &fi);
+    if (unlikely(ret)) {
+        ARMCPU *cpu = ARM_CPU(cs);
+        CPUARMState *env = &cpu->env;
+        uint32_t syn, exc, fsc;
+        unsigned int target_el;
+        bool same_el;
+
+        if (retaddr) {
+            /* now we have a real cpu fault */
+            cpu_restore_state(cs, retaddr);
+        }
+
+        target_el = exception_target_el(env);
+        if (fi.stage2) {
+            target_el = 2;
+            env->cp15.hpfar_el2 = extract64(fi.s2addr, 12, 47) << 4;
+        }
+        same_el = arm_current_el(env) == target_el;
+
+        if (fsr & (1 << 9)) {
+            /* LPAE format fault status register : bottom 6 bits are
+             * status code in the same form as needed for syndrome
+             */
+            fsc = extract32(fsr, 0, 6);
+        } else {
+            /* Short format FSR : this fault will never actually be reported
+             * to an EL that uses a syndrome register. Check that here,
+             * and use a (currently) reserved FSR code in case the constructed
+             * syndrome does leak into the guest somehow.
+             */
+            assert(target_el != 2 && !arm_el_is_aa64(env, target_el));
+            fsc = 0x3f;
+        }
+
+        /* For insn and data aborts we assume there is no instruction syndrome
+         * information; this is always true for exceptions reported to EL1.
+         */
+        if (access_type == MMU_INST_FETCH) {
+            syn = syn_insn_abort(same_el, 0, fi.s1ptw, fsc);
+            exc = EXCP_PREFETCH_ABORT;
+        } else {
+            syn = merge_syn_data_abort(env->exception.syndrome, target_el,
+                                       same_el, fi.s1ptw,
+                                       access_type == MMU_DATA_STORE, fsc);
+            if (access_type == MMU_DATA_STORE
+                && arm_feature(env, ARM_FEATURE_V6)) {
+                fsr |= (1 << 11);
+            }
+            exc = EXCP_DATA_ABORT;
+        }
+        
+        CPUState *cs = CPU(arm_env_get_cpu(env));
+        assert(!excp_is_internal(exc));
+        cs->exception_index = exc;
+        env->exception.syndrome = syn;
+        env->exception.target_el = target_el;
+        return ret;
+    }
+    return ret;
+}
+
 void tlb_fill(CPUState *cs, target_ulong addr, MMUAccessType access_type,
               int mmu_idx, uintptr_t retaddr)
 {

@@ -590,7 +590,7 @@ target_ulong afl_noforkserver(CPUArchState *env, int status)
   print_loop_count++;
   if(print_debug)
   {
-    DECAF_printf("new iteration:%x\n", env->active_tc.PC);
+    DECAF_printf("new iteration\n");
   }
   //restore_page(1);
   afl_user_fork = 1;
@@ -638,7 +638,7 @@ target_ulong afl_noforkserver_restart(CPUArchState *env, int status)
 
     if(print_debug)
     {
-      DECAF_printf("new iteration:%x\n", env->active_tc.PC);
+      DECAF_printf("new iteration\n");
     }
     feed_times = 0;
     afl_user_fork = 1;

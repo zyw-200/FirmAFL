@@ -32,7 +32,7 @@ define MAPPING_WITHOUT_FUZZ
 #define PRE_MAPPING //comment out if choose NEW_MAPPING
 #define STORE_PAGE_FUNC
 //#define PADDR_MAP_CHECK
-//#define FEED_INPUT //FEED_ENV or FEED_HTTP
+#define FEED_INPUT //FEED_ENV or FEED_HTTP
 #define MAX_LEN 3000
 
 

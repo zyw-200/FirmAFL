@@ -40,6 +40,10 @@ void * snapshot_shmem_start;
 void * snapshot_shmem_pt;
 int snapshot_shmem_id;
 
+extern void exception_exit(int syscall_num);
+extern void bug_exit(target_ulong addr);
+
+
 target_ulong pre_map_page[2048];//jjhttpd 0x31000 //0x1000// 0x56000 //0x51000
 int pre_map_index = 0;
 
@@ -118,9 +122,7 @@ int read_aflcmd(void)
   if(pipe_read_fd != -1)  
   {    
       int is_loop_over;
-      char recv_char;
-      res = read_content(pipe_read_fd, &recv_char, sizeof(int));
-      is_loop_over = recv_char;
+      res = read_content(pipe_read_fd, &is_loop_over, sizeof(int));
       if(res == -1)  
       {  
           fprintf(stderr, "read_aflcmd error on pipe\n");  sleep(1000);
@@ -220,6 +222,7 @@ void write_aflcmd(int cmd, USER_MODE_TIME *user_mode_time)
       {
         printf("write cmd ok:%x\n", cmd);  
       }
+      printf("write cmd ok:%x\n", cmd);
     }  
     else
     {
@@ -310,22 +313,22 @@ static void start_run(void) {
 extern void feed_input(CPUState *env);
 int fork_times = 0;
 #define AFL_QEMU_CPU_SNIPPET2 do { \
-    if(env->active_tc.PC == afl_entry_point && fork_times==0) { \
+    if(pc == afl_entry_point && fork_times==0) { \
       fork_times=1; \
       afl_setup(); \
       afl_forkserver(cpu); \
       feed_input(cpu); \
     } \
-    afl_maybe_log(env->active_tc.PC); \
+    afl_maybe_log(pc); \
   } while (0)
 
 
 #define AFL_QEMU_CPU_SNIPPET3 do { \
-    if(env->active_tc.PC == afl_entry_point && fork_times==0) { \
+    if(pc == afl_entry_point && fork_times==0) { \
       fork_times=1; \
       start_run(); \
     } \
-    afl_maybe_log(env->active_tc.PC); \
+    afl_maybe_log(pc); \
   } while (0)
 
 /* We use one additional file descriptor to relay "needs translation"

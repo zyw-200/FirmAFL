@@ -702,12 +702,19 @@ int cpu_exec(CPUState *cpu)
 
         while (!cpu_handle_interrupt(cpu, &last_tb)) {
             CPUArchState *env = cpu->env_ptr;
+#ifdef TARGET_MIPS
+            target_ulong pc = env->active_tc.PC;
+#elif defined(TARGET_ARM)
+            target_ulong pc = env->regs[15];
+#endif
+
 #ifdef NO_MAPPING_AND_FUZZ
 #elif defined(MAPPING_WITHOUT_FUZZ)
             AFL_QEMU_CPU_SNIPPET3;
 #else //fuzz with or without mapping, depend on MEM_MAPPING
             AFL_QEMU_CPU_SNIPPET2;
 #endif
+
 
 #ifdef LMBENCH
             //target_ulong pc = env->active_tc.PC;

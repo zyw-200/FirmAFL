@@ -2223,7 +2223,6 @@ void tcg_flush_softmmu_tlb(CPUState *cs)
 #endif
 }
 
-/*
 int ret_tb_pc(uintptr_t searched_pc)
 {
     TranslationBlock * tb = tb_find_pc(searched_pc);
@@ -2236,7 +2235,9 @@ int ret_tb_pc(uintptr_t searched_pc)
         return tb->pc;
     }
 }
-*/
+
+#ifdef TARGET_MIPS   
+
 target_ulong ins_pc_analysis(uintptr_t searched_pc, int error_addr);
 target_ulong ins_pc_analysis(uintptr_t searched_pc, int error_addr)
 {
@@ -2289,6 +2290,7 @@ target_ulong ins_pc_analysis(uintptr_t searched_pc, int error_addr)
  */  
 
     cpu_memory_rw_debug(first_cpu, data[0], buf, 4, 0);
+ 
     int opcode = (buf[3] & 0xff) >>2; //mipsel
     int rs = ((buf[3] & 0x03) << 3) + ((buf[2] & 0xe0) >> 5);
     int rd = (buf[2] & 0x1f);
@@ -2316,6 +2318,7 @@ target_ulong ins_pc_analysis(uintptr_t searched_pc, int error_addr)
 
     if(rw_flag == 0)
     {
+
         int src = env->active_tc.gpr[rs] + im;
         printf("#####load :%d, source:%x\n", rs, src);
         if(src == error_addr)
@@ -2357,3 +2360,5 @@ target_ulong ins_pc_analysis(uintptr_t searched_pc, int error_addr)
     //assert(searched_pc == GETPC());
 
 }
+
+#endif

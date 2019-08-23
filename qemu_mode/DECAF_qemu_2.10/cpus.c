@@ -1602,7 +1602,11 @@ static void *qemu_tcg_cpu_thread_fn(void *arg)
                 if(tmp_not_exit)
                 {
                     printf("singal 4194\n");
+#ifdef TARGET_MIPS
                     e->active_tc.PC = 0;
+#elif defined TARGET_ARM 
+                    e->regs[15] = 0;
+#endif
                 }
                 write_state(e);
             }    
