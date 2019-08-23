@@ -284,6 +284,7 @@ static void start_run(void) {
     int cmd = 0x10;// start mem write callback
     USER_MODE_TIME user_mode_time;
     write_aflcmd_complete(cmd,  &user_mode_time);
+    rcu_disable_atfork();
   }
  
 }
