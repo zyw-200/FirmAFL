@@ -37,7 +37,7 @@ Our system has two parts: system mode and user mode. We compile them separately 
 	./configure --target-list=mipsel-softmmu,mips-softmmu,arm-softmmu --disable-werror
 	make
 
-###Usage
+## Usage
 
 1.  Setup the firmadyne including importing its datasheet https://cmu.app.boxcn.net/s/hnpvf1n72uccnhyfe307rc2nb9rfxmjp into database.
 
@@ -45,32 +45,33 @@ Our system has two parts: system mode and user mode. We compile them separately 
 
 3.  follow the guidance from firmadyne to generate the system running scripts. 
 >Take DIR-815 router firmware as a example,
-		./sources/extractor/extractor.py -b dlink -sql 127.0.0.1 -np -nk "../firmware/DIR-815_FIRMWARE_1.01.ZIP" images
-		./scripts/getArch.sh ./images/9050.tar.gz
-		./scripts/makeImage.sh 9050
-		./scripts/inferNetwork.sh 9050
-		python FirmAFL_setup.py 9050 mipsel
+
+	./sources/extractor/extractor.py -b dlink -sql 127.0.0.1 -np -nk "../firmware/DIR-815_FIRMWARE_1.01.ZIP" images
+	./scripts/getArch.sh ./images/9050.tar.gz
+	./scripts/makeImage.sh 9050
+	./scripts/inferNetwork.sh 9050
+	python FirmAFL_setup.py 9050 mipsel
 
 4. modify the run.sh manually as following,  in order to emulate firmware with our modified QEMU and kernel, and running on the RAM file.
 >For mipsel,
-		ARCH=mipsel
-		QEMU="./qemu-system-${ARCH}"
-		KERNEL="./vmlinux.${ARCH}_3.2.1" 
-		IMAGE="./image.raw"
-		MEM_FILE="./mem_file"
-		${QEMU} -m 256 -mem-prealloc -mem-path ${MEM_FILE} -M ${QEMU_MACHINE} -kernel ${KERNEL} \ 
+	ARCH=mipsel
+	QEMU="./qemu-system-${ARCH}"
+	KERNEL="./vmlinux.${ARCH}_3.2.1" 
+	IMAGE="./image.raw"
+	MEM_FILE="./mem_file"
+	${QEMU} -m 256 -mem-prealloc -mem-path ${MEM_FILE} -M ${QEMU_MACHINE} -kernel ${KERNEL} \ 
 >For mipseb,
-		ARCH=mips
-		QEMU="./qemu-system-${ARCH}"
-		KERNEL="./vmlinux.${ARCH}_3.2.1" 
-		IMAGE="./image.raw"
-		MEM_FILE="./mem_file"
-		${QEMU} -m 256 -mem-prealloc -mem-path ${MEM_FILE} -M ${QEMU_MACHINE} -kernel ${KERNEL} \
+	ARCH=mips
+	QEMU="./qemu-system-${ARCH}"
+	KERNEL="./vmlinux.${ARCH}_3.2.1" 
+	IMAGE="./image.raw"
+	MEM_FILE="./mem_file"
+	${QEMU} -m 256 -mem-prealloc -mem-path ${MEM_FILE} -M ${QEMU_MACHINE} -kernel ${KERNEL} \
 
 5. run the fuzzing process
 >after running the start.py script, FirmAFL will start the firmware emulation, and after the system initialization(120s), the fuzzing process will start.
-		cd image_9050
-		python start.py 9050
+	cd image_9050
+	python start.py 9050
 
 
 
