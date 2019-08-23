@@ -1,8 +1,0 @@
-GET /HPHDRANAZJAYZNLA/userRpm/PingIframeRpm.htm?sendNum=20&isNew=new&doTyp=ping&pSize=64&overTime=800&trHops=20&ping_addr=zywzywzywzywzywzywzywzyw HTTP/1.1
-Accept-Encoding: identity
-Cookie: Authorization=Basic YWRtaW46MjEyMzJmMjk3YTU3YTVhNzQzODk0YTBlNGE4MDFmYzM=
-Host: 192.168.0.1
-Referer: http://192.168.0.1/HPHDRANAZJAYZNLA/userRpm/DiagnosticRpm.htm
-Connection: close
-User-Agent: Python-urllib/2.7
-

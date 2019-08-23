@@ -1,0 +1,7 @@
+mapping_filename=../image_161160/mapping_table
+init_read_pipename=../image_161160/user_cpu_state
+write_pipename=../image_161160/full_cpu_state
+program_analysis=miniupnpd
+feed_type=FEED_HTTP
+id=161160
+opti=yes

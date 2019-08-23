@@ -65,11 +65,11 @@ IMAGE="./image.raw"
 MEM_FILE="./mem_file"
 
 
-AFL="./afl-fuzz-full -m none -t 800000+  -i ./inputs -o ./outputs -x keywords_10853 -QQ --"
+AFL="./afl-fuzz-full -m none -t 800000+  -i ./inputs -o ./outputs_full -x keywords_10853 -QQ --"
 
 #gdb -q --args \
 ${AFL} \
- ${QEMU} -m 256  -mem-prealloc -mem-path mem_file -M ${QEMU_MACHINE} -kernel ${KERNEL} \
+ ${QEMU} -m 256 -M ${QEMU_MACHINE} -kernel ${KERNEL} \
     -drive if=ide,format=raw,file=${IMAGE} -append "root=${QEMU_ROOTFS} console=ttyS0 nandsim.parts=64,64,64,64,64,64,64,64,64,64 rdinit=/firmadyne/preInit.sh rw debug ignore_loglevel print-fatal-signals=1 user_debug=31 firmadyne.syscall=0" \
     -nographic \
     -net nic,vlan=0 -net socket,vlan=0,listen=:2000 -net nic,vlan=1 -net socket,vlan=1,listen=:2001 -net nic,vlan=0 -net tap,vlan=0,id=net0,ifname=${TAPDEV_0},script=no -net nic,vlan=3 -net socket,vlan=3,listen=:2003 \

@@ -1,0 +1,10 @@
+mapping_filename=../image_10566/mapping_table
+init_read_pipename=../image_10566/user_cpu_state
+write_pipename=../image_10566/full_cpu_state
+start_fork_pc=0x402cd0
+program_analysis=hnap
+lib_name=libc.so.0
+environ_offset=0x74e60
+feed_type=FEED_ENV
+id=10566
+opti=yes

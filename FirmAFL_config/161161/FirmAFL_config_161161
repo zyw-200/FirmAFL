@@ -1,7 +1,0 @@
-mapping_filename=../image_161161/mapping_table
-init_read_pipename=../image_161161/user_cpu_state
-write_pipename=../image_16116/full_cpu_state
-program_analysis=httpd
-feed_type=FEED_HTTP
-id=161161
-opti=yes

@@ -1,7 +1,7 @@
 GET /session_login.php HTTP/1.1
 Accept-Encoding: gzip,deflate,sdchzywzywzywzywzywzywzywzywzyw
 Host: 192.168.0.50
-Cookie: dlink_uid=zywzyw
+Cookie: uid=zywzyw
 Content-Length: 13
 
 test=test

@@ -1,0 +1,8 @@
+mapping_filename=../image_105609/mapping_table
+init_read_pipename=../image_105609/user_cpu_state
+write_pipename=../image_105609/full_cpu_state
+start_fork_pc=0x400920
+program_analysis=tcapi_new
+feed_type=FEED_CMD
+id=105609
+opti=yes

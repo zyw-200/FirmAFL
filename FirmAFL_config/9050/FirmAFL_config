@@ -1,0 +1,10 @@
+mapping_filename=../image_9050/mapping_table
+init_read_pipename=../image_9050/user_cpu_state
+write_pipename=../image_9050/full_cpu_state
+start_fork_pc=0x4023e0
+program_analysis=hedwig.cgi
+lib_name=libuClibc-0.9.30.1.so
+environ_offset=0x72bf0
+feed_type=FEED_ENV
+id=9050
+opti=yes

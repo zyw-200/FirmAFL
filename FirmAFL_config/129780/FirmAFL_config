@@ -1,0 +1,10 @@
+mapping_filename=../image_129780/mapping_table
+init_read_pipename=../image_129780/user_cpu_state
+write_pipename=../image_129780/full_cpu_state
+start_fork_pc=0x400dcc
+program_analysis=video.cgi
+lib_name=libuClibc-0.9.30.so
+environ_offset=0xa06bc
+feed_type=FEED_ENV
+id=129780
+opti=yes
