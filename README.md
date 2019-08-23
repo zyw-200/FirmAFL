@@ -54,6 +54,7 @@ Our system has two parts: system mode and user mode. We compile them separately 
 
 4. modify the run.sh manually as following,  in order to emulate firmware with our modified QEMU and kernel, and running on the RAM file.
 >For mipsel,
+
 	ARCH=mipsel
 	QEMU="./qemu-system-${ARCH}"
 	KERNEL="./vmlinux.${ARCH}_3.2.1" 
@@ -61,6 +62,7 @@ Our system has two parts: system mode and user mode. We compile them separately 
 	MEM_FILE="./mem_file"
 	${QEMU} -m 256 -mem-prealloc -mem-path ${MEM_FILE} -M ${QEMU_MACHINE} -kernel ${KERNEL} \ 
 >For mipseb,
+
 	ARCH=mips
 	QEMU="./qemu-system-${ARCH}"
 	KERNEL="./vmlinux.${ARCH}_3.2.1" 
@@ -70,6 +72,7 @@ Our system has two parts: system mode and user mode. We compile them separately 
 
 5. run the fuzzing process
 >after running the start.py script, FirmAFL will start the firmware emulation, and after the system initialization(120s), the fuzzing process will start.
+
 	cd image_9050
 	python start.py 9050
 
