@@ -217,7 +217,7 @@ void address_space_stq_cached(MemoryRegionCache *cache, hwaddr addr, uint64_t va
 extern bool target_page_bits_decided;
 extern int target_page_bits;
 //zyw
-#define TARGET_PAGE_BITS 13
+#define TARGET_PAGE_BITS 12
 //#define TARGET_PAGE_BITS target_page_bits
 //#define TARGET_PAGE_BITS ({ assert(target_page_bits_decided); target_page_bits; })
 
