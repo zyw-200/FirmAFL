@@ -75,16 +75,18 @@ static os_handle_c handle_funds_c[] = {
 
 static void block_end_cb(DECAF_Callback_Params* temp)
 { 
+
     static long long count_out = 0x8000000000L;	// detection fails after 1000 basic blocks
     int found_guest_os = 0;
     // Probing guest OS for every basic block is too expensive and wasteful.
     // Let's just do it once every 256 basic blocks
+    
     if ((count_out & 0xff) != 0)
     	goto _skip_probe;
 
 	for(size_t i=0; i<sizeof(handle_funds_c)/sizeof(handle_funds_c[0]); i++)
 	{
-		if(handle_funds_c[i].find(temp->ie.env, insn_handle_c) == 1)
+		if(handle_funds_c[i].find(temp->be.env, insn_handle_c) == 1)
 		{
 			GuestOS_index_c = i;
 			found_guest_os = 1;
@@ -536,7 +538,6 @@ void print_mapping(const char *name, target_ulong pgd, target_ulong *base, FILE 
 	unordered_map < uint32_t, process * >::iterator iter_p = process_map.find(pgd);
 	if (iter_p == process_map.end())
 		return NULL;
-
 	process *proc = iter_p->second;
 	traverse_mmap_new(current_cpu, proc, fp);
     return NULL;

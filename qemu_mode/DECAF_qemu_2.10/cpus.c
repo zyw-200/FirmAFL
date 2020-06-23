@@ -1090,6 +1090,10 @@ static void qemu_wait_io_event_common(CPUState *cpu)
 
 static bool qemu_tcg_should_sleep(CPUState *cpu)
 {
+//zywzyw
+#ifdef TARGET_ARM
+    return all_cpu_threads_idle();
+#endif  
     if (mttcg_enabled) {
         return cpu_thread_is_idle(cpu);
     } else {
@@ -1608,6 +1612,7 @@ static void *qemu_tcg_cpu_thread_fn(void *arg)
                     e->regs[15] = 0;
 #endif
                 }
+                //printf("write state*********;%x\n", e->active_tc.PC);
                 write_state(e);
             }    
             restart_cpu = first_cpu;
@@ -1786,7 +1791,10 @@ static void *qemu_tcg_cpu_thread_fn(void *arg)
             CPUArchState *env = cpu->env_ptr;
 #ifdef TARGET_MIPS
             DECAF_printf("write pipe pc: %x\n",env->active_tc.PC);
-#endif            
+#endif
+#ifdef TARGET_ARM
+            DECAF_printf("write pipe pc: %x\n",env->regs[15]);
+#endif           
             if(write(afl_qemuloop_pipe[1], "FOR", 3) != 3)
                 printf("write afl_qemuloop_pip error\n");   
         }
@@ -2221,7 +2229,6 @@ gotPipeNotification(void *ctx)
 
 void qemu_init_vcpu(CPUState *cpu)
 {
-
     FirmAFL_config();
 #ifdef MEM_MAPPING
     int res = open_read_pipe();
@@ -2241,7 +2248,6 @@ void qemu_init_vcpu(CPUState *cpu)
         exit(1);
     }
     qemu_set_fd_handler(afl_qemuloop_pipe[0], gotPipeNotification, NULL, NULL);
-
 #endif
 
     cpu->nr_cores = smp_cores;

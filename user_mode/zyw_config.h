@@ -27,7 +27,7 @@ define MAPPING_WITHOUT_FUZZ
 //#define NO_MAPPING_AND_FUZZ
 //#define MAPPING_WITHOUT_FUZZ
 #define MEM_MAPPING
-//#define NEW_MAPPING
+#define NEW_MAPPING
 #define SNAPSHOT_SYNC
 #define PRE_MAPPING //comment out if choose NEW_MAPPING
 #define STORE_PAGE_FUNC

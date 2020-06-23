@@ -193,7 +193,7 @@ typedef struct MISSING_PAGE{
     int mmu_idx; 
 } MISSING_PAGE;
 
-int file_opti = 0;
+
 int file_fds[100];
 int fd_index = 0;
 
@@ -272,6 +272,24 @@ int buf_read_index = 0;
 char lib_name[256];
 int environ_offset; 
 char feed_type[256];
+
+//feed env
+int global_addr = 0;
+int environ_addr = 0;
+int content_addr = 0; //replace addr
+extern int libuclibc_addr;
+int libuclibc_addr_flag = 0;
+int replace_addr = 0;
+
+//feed http
+char http_package[50][4096];
+char tmp_http_package[50][4096];
+char http_key[50][100];
+char http_value[50][4096];
+int package_index = 0;
+int feed_addr = 0;
+int feed_input_times = 0; //161161
+
 #endif
 
 void FirmAFL_config()
@@ -317,7 +335,7 @@ void FirmAFL_config()
 }
 
 #ifndef FEED_INPUT
-void feed_input(CPUState * cpu){}
+void get_input(CPUState * cpu){}
 #endif
 
 #ifdef FEED_INPUT
@@ -351,22 +369,6 @@ target_ulong getWork(char * ptr, target_ulong sz)
 }
 
 
-
-//feed env
-int global_addr = 0;
-int environ_addr = 0;
-int content_addr = 0; //replace addr
-extern int libuclibc_addr;
-int libuclibc_addr_flag = 0;
-int replace_addr = 0;
-
-//feed http
-char http_package[50][4096];
-char tmp_http_package[50][4096];
-char http_key[50][100];
-char http_value[50][4096];
-int package_index = 0;
-int feed_addr = 0;
 
 
 
@@ -404,9 +406,9 @@ void prepare_feed_input(CPUState * cpu)
             printf("tmp_content_addr:%x, %x, content is:%s\n", tmp_env_addr, tmp_content_addr, g2h(tmp_content_addr));
             tmp_env_addr+=4;
         }
-
-        assert(global_addr!=0 && environ_addr!=0 && content_addr!=0);
         printf("global addr:%lx, %lx,%lx\n", global_addr,environ_addr, content_addr);
+        assert(global_addr!=0 && environ_addr!=0 && content_addr!=0);
+        
     }
     else if (strcmp(feed_type, "FEED_HTTP") == 0)
     {
@@ -506,7 +508,7 @@ int check_http_header(char * input) // if all are readable charater before =
 }
 
 
-void feed_input(CPUState * cpu)
+void get_input(CPUState * cpu)
 {
     if(strcmp(feed_type, "FEED_ENV") == 0)
     {
@@ -525,7 +527,8 @@ void feed_input(CPUState * cpu)
         }
         */
 //
-        //printf("content:%s\n\n\n", g2h(content_addr));
+
+       // printf("content:%s\n\n\n", g2h(content_addr));
         CPUArchState *env = cpu->env_ptr;
         char input_buf[MAX_LEN];
         int get_len = getWork(input_buf, MAX_LEN);
@@ -593,6 +596,87 @@ void feed_input(CPUState * cpu)
         sleep(100);
     }
 }
+
+
+abi_long feed_input(int syscall_num, CPUArchState *env, int *network_handle)
+{
+    abi_long ret = -1;
+    *network_handle = 1;
+    if(strcmp(feed_type,"FEED_HTTP") == 0)
+    {
+        if((syscall_num == 175  || syscall_num == 3 || syscall_num == 176) && (env->active_tc.gpr[4] == accept_fd) && feed_input_times == 0)
+        {
+            if(program_id == 161161)
+            {
+                feed_input_times++;
+            }
+            //printf("hook recv fd:%d\n", accept_fd);
+            int flag = env->active_tc.gpr[7];
+            int len = env->active_tc.gpr[6];
+            char *buf = g2h(env->active_tc.gpr[5]);
+            //printf("recv :%d,%d,%d, %s\n", accept_fd, len,buf_read_index, recv_buf);
+            int rest_len = total_len - buf_read_index;
+            //printf("hook flag:%x, %x\n", MSG_PEEK, flag);
+            if(rest_len > len)
+            {
+                ret = len;
+                memcpy(buf, recv_buf + buf_read_index, ret);
+            }
+            else
+            {
+                ret  = rest_len;
+                memcpy(buf, recv_buf + buf_read_index, ret);
+            }
+
+            if(MSG_PEEK == flag && (syscall_num == 175 || syscall_num == 176))
+            {
+                //printf("recv msg_peek\n");
+            }
+            else
+            {
+                buf_read_index+=ret;
+                
+            }
+        }
+        else if((env->active_tc.gpr[4]== accept_fd) && syscall_num == 140 )
+        {
+            ret = 0;
+        }
+        
+        else if((env->active_tc.gpr[4]== accept_fd) && syscall_num == 178 )
+        {
+            ret = env->active_tc.gpr[6];
+        }
+        /*
+        else if((env->active_tc.gpr[4]== accept_fd) && syscall_num == 55)
+        {
+            ret = env->active_tc.gpr[5];
+        }
+        */
+        else if((env->active_tc.gpr[4]== accept_fd) && syscall_num == 4)
+        {
+            if(program_id == 161161)
+            {
+               normal_exit(syscall_num);
+            }
+            else
+            {
+                ret = env->active_tc.gpr[6];
+            }
+        }
+        else
+        {
+            *network_handle = 0;
+        }
+    }
+    
+    else
+    {
+        *network_handle = 0;
+    }
+    return ret;
+}           
+
 
 #endif //FEED_INPUT
 
@@ -3063,14 +3147,241 @@ static int do_break(CPUMIPSState *env, target_siginfo_t *info,
 }
 
 
-int file_syscall_fd = -1;
-int local_or_not = 0;
 int count_142 = 0;
 int count_20 = 0;
-int feed_input_times = 0;
+
 int last_syscall = 0;
 int count_3 = 0;
 int monitor_fd = 0;
+
+void exit_func(int syscall_num, int program_id)
+{
+#ifdef MEM_MAPPING
+
+        first_syscall++;
+        if (syscall_num == 1 || syscall_num == 246)
+        {          
+            normal_exit(syscall_num);
+        }
+        else if(syscall_num == 142)
+        {
+            if(program_id == 10853 || program_id == 9925 || program_id == 105600 || program_id == 161160)
+            {
+                normal_exit(syscall_num); 
+            }
+            else if(program_id == 161161)
+            {
+                if(last_syscall == 142)
+                {
+                    last_syscall = 0;
+                    normal_exit(syscall_num); 
+                }
+            }
+        }
+        else if(syscall_num == 45)
+        {
+
+            if(program_id == 10853)
+            {
+                normal_exit(syscall_num);
+            }
+            if(program_id == 161161)
+            {
+                 normal_exit(syscall_num);
+            }
+        }
+        else if(syscall_num == 3)
+        {
+            if(program_id == 161161)
+            {
+                count_3++;
+                if(count_3 == 3)
+                {
+                    count_3 = 0;
+                    last_syscall = 0;
+                    normal_exit(syscall_num);
+                }
+            }
+        }
+        if(syscall_num != 3)
+        {
+            count_3 = 0;
+        }
+#endif
+}
+
+
+int determine_local_or_not(int syscall_num, int program_id, CPUArchState *env, int *file_opti)
+{  
+    int file_syscall_fd = -1;
+    int local_or_not = 0;
+    if(syscall_num == 5)
+    {
+        char *file_name = g2h(env->active_tc.gpr[4]);
+        printf("open file:%s, flag:%x\n", file_name, env->active_tc.gpr[5]);
+        if(program_id == 129780 || program_id == 129781)
+        {
+            add_tmp_file(file_name);
+            chdir("/server/cgi-bin/");
+        }
+        if(access(file_name, 0) == 0)
+        {
+            *file_opti = 1;
+        }
+        else if((env->active_tc.gpr[5]&0xf) !=0 )
+        {
+            char* c = strrchr(file_name, '/');
+            char dir_name[256];
+            memset(dir_name, 0, 256);
+            //printf("$$$$$$$$$%lx,%lx\n", c, file_name);
+            strncpy(dir_name, file_name, c - file_name);
+            if(access(dir_name, 0) == 0)
+            {
+                *file_opti = 1;
+            }
+            else
+            {
+                *file_opti = 0;
+                printf("file write dir:%s not exist\n", dir_name);
+            }
+
+        }
+        else
+        {
+            *file_opti = 0;
+        }
+        if(program_id == 129780 || program_id == 129781)
+        {
+            //printf("current working directory: %s\n", getcwd(NULL, NULL));
+            chdir("/");
+        }
+    }
+    else if(syscall_num == 183) //socket
+    {
+        if(env->active_tc.gpr[5] == 2 || env->active_tc.gpr[5] == 10)
+        {
+            *file_opti = 1;
+        } 
+    }
+    //read, write, close, ioctl, fcntl, _llseek, fstat
+    else if(syscall_num == 3 || syscall_num == 4 || syscall_num == 6 || syscall_num == 54 
+        || syscall_num == 55 || syscall_num == 140 || syscall_num == 108)
+    {
+        file_syscall_fd = env->active_tc.gpr[4];
+    }
+    else if(syscall_num == 170 || syscall_num == 178 || syscall_num == 142) //connect, send, _newselect
+    {
+        file_syscall_fd = env->active_tc.gpr[4];
+    }
+    else
+    {
+        file_syscall_fd = -1;
+    }
+//local_or_not
+
+    if(program_id == 90501)
+    {
+        local_or_not = 1;
+    }
+    else if(syscall_num == 85 || syscall_num == 10 || syscall_num == 38 || syscall_num == 40)// readlink, unlink, rename , rmdir
+    {
+        char *file_name = g2h(env->active_tc.gpr[4]);
+        if(access(file_name, 0) == 0)
+        {
+            local_or_not = 1;
+        }
+    }
+    else if(syscall_num == 106) //stat
+    {
+        char *file_name = g2h(env->active_tc.gpr[4]);
+        local_or_not = 1;
+    }
+                   
+    else if (if_standard_io(file_syscall_fd))
+    {
+        if(program_id== 90500 || program_id == 90501) 
+        {
+            local_or_not = 1; //zyw
+        }
+        else
+        {   
+            
+            local_or_not = 2;
+        }
+    }
+    else if((*file_opti == 1) || if_exist_local_fd(file_syscall_fd))
+    {
+        local_or_not = 1;
+    }
+    else if(program_id == 10566 || program_id == 9054) //hnap
+    {
+        if(syscall_num == 194) // rt_sigaction
+        {
+            local_or_not = 1;
+        }
+    }
+    //nbench_new
+     //else if(syscall_num == 283 || syscall_num == 43) //set_thread_area
+    else if(syscall_num == 283 || syscall_num == 90 || syscall_num == 91 || syscall_num == 43) //set_thread_area
+    {
+        if(program_id == 90500 || program_id == 90501)
+        {
+            local_or_not = 1;
+        }
+    }
+    
+    //lat_syscall null
+    else if(syscall_num == 64 && program_id == 90501) //getppid
+    {
+        local_or_not = 1;
+    }
+    
+    //else if(syscall_num == 42 || syscall_num == 77 || syscall_num == 78) //pipe
+    //{
+    //    local_or_not = 1;
+    //}
+   
+    
+    //else if(syscall_num == 39 || syscall_num == 40) //mkdir, rmdir
+    //{
+    //    char *file_name = g2h(env->active_tc.gpr[4]);
+    //    printf("************dir syscall %d:%s\n",syscall_num, file_name);
+    //    local_or_not = 1;
+    //}
+
+
+    int condition = 0;
+    if(optimization_level== 0)
+    {
+        condition = 0;
+    }
+    else if(optimization_level== 1)
+    {
+        
+        if(program_id == 105609)
+        {
+            condition = 1;
+        }
+        else if(program_id == 10853)
+        {
+            if(syscall_num == 178)
+            {
+                condition = 1;
+            }
+            else
+            {
+                condition = local_or_not;
+                printf("opti:%d\n", condition);
+            }
+        }
+        else
+        {
+
+            condition = local_or_not;
+        }             
+    }
+    return condition;
+}
 
 void cpu_loop(CPUMIPSState *env)
 {
@@ -3093,63 +3404,9 @@ void cpu_loop(CPUMIPSState *env)
             env->active_tc.PC += 4;
 # ifdef TARGET_ABI_MIPSO32
             syscall_num = env->active_tc.gpr[2] - 4000;
+            printf("syscall num:%d\n", syscall_num);
+            exit_func(syscall_num, program_id);//zyw
 
-#ifdef MEM_MAPPING
-            /*
-            if(syscall_num!=77 && syscall_num!=78)
-                printf("sys num:%d,%x,%d,%d\n", syscall_num, env->active_tc.gpr[4], env->active_tc.gpr[5], env->active_tc.gpr[6]);
-            */
-            first_syscall++;
-            if (syscall_num == 1 || syscall_num == 246)
-            {          
-                normal_exit(syscall_num);
-            }
-            else if(syscall_num == 142)
-            {
-                if(program_id == 10853 || program_id == 9925 || program_id == 105600 || program_id == 161160)
-                {
-                    normal_exit(syscall_num); 
-                }
-                else if(program_id == 161161)
-                {
-                    if(last_syscall == 142)
-                    {
-                        last_syscall = 0;
-                        normal_exit(syscall_num); 
-                    }
-                }
-            }
-            else if(syscall_num == 45)
-            {
-    
-                if(program_id == 10853)
-                {
-                    normal_exit(syscall_num);
-                }
-                if(program_id == 161161)
-                {
-                     normal_exit(syscall_num);
-                }
-            }
-            else if(syscall_num == 3)
-            {
-                if(program_id == 161161)
-                {
-                    count_3++;
-                    if(count_3 == 3)
-                    {
-                        count_3 = 0;
-                        last_syscall = 0;
-                        normal_exit(syscall_num);
-                    }
-                }
-            }
-            if(syscall_num != 3)
-            {
-                count_3 = 0;
-            }
-
-#endif
             if (syscall_num >= sizeof(mips_syscall_args)) {
                 ret = -TARGET_ENOSYS;
             } else {
@@ -3180,178 +3437,12 @@ void cpu_loop(CPUMIPSState *env)
                 default:
                     break;
                 }
-#ifdef MEM_MAPPING
-                file_opti = 0;
-                file_syscall_fd = -1;
-                local_or_not = 0;
-                if(syscall_num == 5)
-                {
-                    char *file_name = g2h(env->active_tc.gpr[4]);
-                    printf("open file:%s, flag:%x\n", file_name, env->active_tc.gpr[5]);
-                    if(program_id == 129780 || program_id == 129781)
-                    {
-                        add_tmp_file(file_name);
-                    }
-                    if(program_id == 129780 || program_id == 129781)
-                    {
-                        //printf("current working directory: %s\n", getcwd(NULL, NULL));
-                        chdir("/server/cgi-bin/");
-                        
-                    }
-                    if(access(file_name, 0) == 0)
-                    {
-                        file_opti = 1;
-                    }
-                    else if((env->active_tc.gpr[5]&0xf) !=0 )
-                    {
-                        char* c = strrchr(file_name, '/');
-                        char dir_name[256];
-                        memset(dir_name, 0, 256);
-                        //printf("$$$$$$$$$%lx,%lx\n", c, file_name);
-                        strncpy(dir_name, file_name, c - file_name);
-                        if(access(dir_name, 0) == 0)
-                        {
-                            file_opti = 1;
-                        }
-                        else
-                        {
-                            file_opti = 0;
-                            printf("file write dir:%s not exist\n", dir_name);
-                        }
 
-                    }
-                    else
-                    {
-                        file_opti = 0;
-                    }
-                    if(program_id == 129780 || program_id == 129781)
-                    {
-                        //printf("current working directory: %s\n", getcwd(NULL, NULL));
-                        chdir("/");
-                    }
-                }
-                else if(syscall_num == 183) //socket
-                {
-                    file_opti = 1;
-                }
-                //read, write, close, ioctl, fcntl, _llseek, fstat
-                else if(syscall_num == 3 || syscall_num == 4 || syscall_num == 6 || syscall_num == 54 
-                    || syscall_num == 55 || syscall_num == 140 || syscall_num == 108)
-                {
-                    file_syscall_fd = env->active_tc.gpr[4];
-                }
-                else if(syscall_num == 170 || syscall_num == 178 || syscall_num == 142) //connect, send, _newselect
-                {
-                    file_syscall_fd = env->active_tc.gpr[4];
-                }
-                else
-                {
-                    file_syscall_fd = -1;
-                }
-//local_or_not
+#ifdef MEM_MAPPING   
+                int file_opti = 0;        
+                int local_or_not = determine_local_or_not(syscall_num, program_id, env, &file_opti);
+
             
-                if(program_id == 90501)
-                {
-                    local_or_not = 1;
-                }
-                else if(syscall_num == 85 || syscall_num == 10 || syscall_num == 38 || syscall_num == 40)// readlink, unlink, rename , rmdir
-                {
-                    char *file_name = g2h(env->active_tc.gpr[4]);
-                    if(access(file_name, 0) == 0)
-                    {
-                        local_or_not = 1;
-                    }
-                }
-                else if(syscall_num == 106) //stat
-                {
-                    char *file_name = g2h(env->active_tc.gpr[4]);
-                    local_or_not = 1;
-                }
-                               
-                else if (if_standard_io(file_syscall_fd))
-                {
-                    if(program_id!=90500) //nbench_new
-                    {
-                        local_or_not = 2; //zyw
-                    }
-                    else if(program_id!= 90501) //lmbench
-                    {
-                        local_or_not = 0; //zyw
-                    }
-                    else
-                    {
-                        local_or_not = 1;
-                    }
-                }
-                else if((file_opti == 1) || if_exist_local_fd(file_syscall_fd))
-                {
-                    local_or_not = 1;
-                }
-                else if(program_id == 10566 || program_id == 9054) //hnap
-                {
-                    if(syscall_num == 194) // rt_sigaction
-                    {
-                        local_or_not = 1;
-                    }
-                }
-                //nbench_new
-                 //else if(syscall_num == 283 || syscall_num == 43) //set_thread_area
-                else if(syscall_num == 283 || syscall_num == 90 || syscall_num == 91 || syscall_num == 43) //set_thread_area
-                {
-                    if(program_id == 90500 || program_id == 90501)
-                    {
-                        local_or_not = 1;
-                    }
-                }
-                
-                //lat_syscall null
-                else if(syscall_num == 64 && program_id == 90501) //getppid
-                {
-                    local_or_not = 1;
-                }
-                /*
-                else if(syscall_num == 42 || syscall_num == 77 || syscall_num == 78) //pipe
-                {
-                    local_or_not = 1;
-                }
-                */
-                /*
-                else if(syscall_num == 39 || syscall_num == 40) //mkdir, rmdir
-                {
-                    char *file_name = g2h(env->active_tc.gpr[4]);
-                    printf("************dir syscall %d:%s\n",syscall_num, file_name);
-                    local_or_not = 1;
-                }
-                */
-
-                int condition = 0;
-                if(optimization_level== 0)
-                {
-                    condition = 0;
-                }
-                else if(optimization_level== 1)
-                {
-                    
-                    if(program_id == 105609)
-                    {
-                        condition = 1;
-                    }
-                    else if(program_id == 10853)
-                    {
-                        if(syscall_num == 178)
-                        {
-                            condition = 1;
-                        }
-                        else
-                        {
-                            condition = local_or_not;
-                        }
-                    }
-                    else
-                    {
-                        condition = local_or_not;
-                    }             
-                }
                 /*
                 else if(syscall_num == 178)
                 {
@@ -3373,97 +3464,24 @@ void cpu_loop(CPUMIPSState *env)
                 //else if(0)
 // do syscall
                 user_syscall_flag = 1;
+                int network_handle = 0;
 
 #ifdef FEED_INPUT
-                if((syscall_num == 175  || syscall_num == 3 || syscall_num == 176)
-                    && strcmp(feed_type,"FEED_HTTP") == 0 && (env->active_tc.gpr[4] == accept_fd) && feed_input_times == 0)
-                {
-                    if(program_id == 161161)
-                    {
-                        feed_input_times++;
-                    }
-                    //printf("hook recv fd:%d\n", accept_fd);
-                    int flag = env->active_tc.gpr[7];
-                    int len = env->active_tc.gpr[6];
-                    char *buf = g2h(env->active_tc.gpr[5]);
-                    //printf("recv :%d,%d,%d, %s\n", accept_fd, len,buf_read_index, recv_buf);
-                    int rest_len = total_len - buf_read_index;
-                    //printf("hook flag:%x, %x\n", MSG_PEEK, flag);
-                    if(rest_len > len)
-                    {
-                        ret = len;
-                        memcpy(buf, recv_buf + buf_read_index, ret);
-                    }
-                    else
-                    {
-                        ret  = rest_len;
-                        memcpy(buf, recv_buf + buf_read_index, ret);
-                    }
-                    /*
-                    FILE *fp = fopen("new_case", "w+");
-                    printf("recv content:%s\n", buf);
-                    fputs(buf, fp);
-                    fclose(fp);
-                    */
-
-                    if(MSG_PEEK == flag && (syscall_num == 175 || syscall_num == 176))
-                    {
-                        //printf("recv msg_peek\n");
-                    }
-                    else
-                    {
-                        buf_read_index+=ret;
-                        
-                    }
-                }
-                else if((env->active_tc.gpr[4]== accept_fd) && syscall_num == 140 && strcmp(feed_type,"FEED_HTTP") == 0)
-                {
-                    ret = 0;
-                }
-                
-                else if((env->active_tc.gpr[4]== accept_fd) && syscall_num == 178 && strcmp(feed_type,"FEED_HTTP") == 0)
-                {
-                    ret = env->active_tc.gpr[6];
-                }
-                /*
-                else if((env->active_tc.gpr[4]== accept_fd) && syscall_num == 55 && strcmp(feed_type,"FEED_HTTP") == 0)
-                {
-                    ret = env->active_tc.gpr[5];
-                }
-                */
-                else if((env->active_tc.gpr[4]== accept_fd) && syscall_num == 4 && strcmp(feed_type,"FEED_HTTP") == 0)
-                {
-                    if(program_id == 161161)
-                    {
-                       normal_exit(syscall_num);
-                    }
-                    else
-                    {
-                        ret = env->active_tc.gpr[6];
-                    }
-                }
-#endif               
+                ret = feed_input(syscall_num, env, &network_handle);
+#endif
 
 #ifdef LMBENCH //lmbench use fork system call for lat_pipe
-                if(condition)
-#else                   
-#ifdef FEED_INPUT
-                else if(syscall_num == 2)
-#else
-                if(syscall_num == 2)
-#endif            
+                if(local_or_not)
+#else 
+                if(network_handle == 1)//network operation already handle
+                {
+
+                }                  
+                else if(syscall_num == 2 || syscall_num == 114)
                 {
                     ret = 100;
                 }
-                else if(syscall_num == 114)
-                {
-                    ret = 100;
-                }
-                else if(syscall_num == 166)
-                {
-                    ret = 0;
-                }
-                else if(syscall_num == 117)
+                else if(syscall_num == 166 || syscall_num == 117)
                 {
                     ret = 0;
                 }
@@ -3471,15 +3489,15 @@ void cpu_loop(CPUMIPSState *env)
                 {
                     ret = 0;
                 }
-                
-                else if(condition == 2) 
+                else if(local_or_not == 2) 
                 {
                     ret = env->active_tc.gpr[6]; 
                 }
-                else if(condition)
+                else if(local_or_not)
 #endif//lmbench 
                 {
                     //gettimeofday(&handle_syscall_start, NULL);
+
                     user_syscall_count++;
                     if(print_debug)
                     {
@@ -3505,6 +3523,7 @@ void cpu_loop(CPUMIPSState *env)
                         printf("connect %s\n", g2h(env->active_tc.gpr[5]));
                     }
                     */
+
 #endif
                     user_syscall_flag = 1;
                     ret = do_syscall(env, env->active_tc.gpr[2],
@@ -3516,7 +3535,8 @@ void cpu_loop(CPUMIPSState *env)
                     
                     
 
-#ifdef MEM_MAPPING                
+#ifdef MEM_MAPPING    
+                    printf("local syscall:%d, ret:%d\n", syscall_num, ret)          
                     if((program_id == 129780 || program_id == 129781) && syscall_num == 5)
                     {
                         chdir("/");
@@ -3532,11 +3552,11 @@ void cpu_loop(CPUMIPSState *env)
                         printf("time:%f, sys num ret:%x\n",handle_syscall_end.tv_sec + handle_syscall_end.tv_usec/1000000.0, ret);
                     }
                     handle_syscall_total += (double)handle_syscall_end.tv_sec - handle_syscall_start.tv_sec + (handle_syscall_end.tv_usec - handle_syscall_start.tv_usec)/1000000.0;
-
+                    
                 }
 
                 else{
-                    //printf("remote sys num:%d, pc:%x, arg:%x,%x,%x\n", syscall_num, env->active_tc.PC, env->active_tc.gpr[4],env->active_tc.gpr[5],env->active_tc.gpr[6]);
+                    printf("remote sys num:%d, pc:%x, arg:%x,%x,%x\n", syscall_num, env->active_tc.PC, env->active_tc.gpr[4],env->active_tc.gpr[5],env->active_tc.gpr[6]);
                     user_syscall_flag = 0;
                     env->active_tc.PC -= 4; //very important
                     gettimeofday(&handle_state_start, NULL);
@@ -6678,14 +6698,14 @@ static void handler(int sig_num, siginfo_t *si, void *ptr)
         cross_process_mutex_init(); //zyw
         pthread_mutex_lock(p_mutex_shared);
 
-        printf("cur pc:%x, %x, %x, %d\n", cur_guest_pc, env->active_tc.PC, error_addr, prot);
+        //printf("cur pc:%x, %x, %x, %d\n", cur_guest_pc, env->active_tc.PC, error_addr, prot);
         env->active_tc.PC = cur_guest_pc;
         write_state(env, error_addr);
         uintptr_t phys_addr;
         read_addr(error_addr, &phys_addr);
-        if(mmap_addr == 0)
+        if(phys_addr == 0)
         {
-            printf("handle addr error:%x\n",page.addr);
+            printf("handle addr error:%x\n",error_addr);
             normal_exit(0);
         }
 
@@ -6693,7 +6713,7 @@ static void handler(int sig_num, siginfo_t *si, void *ptr)
         //while(phys_addr != 0)
         //{
        
-            printf("target_mmap:%x, %x, %x\n", error_addr & 0xfffff000, phys_addr & 0xfffff000, prot);
+            //printf("target_mmap:%x, %x, %x\n", error_addr & 0xfffff000, phys_addr & 0xfffff000, prot);
             if(prot == 0 || prot == 2)
             {
                 uintptr_t res = target_mmap(error_addr & 0xfffff000, 1024*4, PROT_READ, MAP_SHARED | MAP_FIXED,  mem_file_fd, phys_addr & 0xfffff000);
@@ -6718,7 +6738,6 @@ static void handler(int sig_num, siginfo_t *si, void *ptr)
 
 static void handler(int sig_num, siginfo_t *si, void *ptr)
 {
-
     ucontext_t *uc = (ucontext_t *)ptr;
     MISSING_PAGE page;
 
@@ -7032,7 +7051,7 @@ int write_state(CPUArchState *env, target_ulong address)
             printf("Write error on pipe\n");sleep(1000);
             exit(EXIT_FAILURE);  
         }   
-        printf("write state ok %x,pipd:%d\n",  cpustate.PC, pipe_write_fd);
+        //printf("write state ok %x,addr:%x\n",  cpustate.PC, address);
     }  
     else{
         printf("write error\n");
@@ -7106,7 +7125,7 @@ int read_state(target_ulong pc, CPUArchState *env)
         */
         loadCPUShState(&cpustate, env);
 #ifdef  TARGET_MIPS
-        printf("read state ok:%lx\n", env->active_tc.PC);
+        //printf("read state ok:%lx\n", env->active_tc.PC);
 #endif
     }  
     else {
@@ -7208,7 +7227,7 @@ void handle_store(CPUArchState *env, target_ulong cur_guest_pc, target_ulong pag
         //int map_res = if_vaddr_write_mapped(page_addr);
         //if(!map_res)
         //{
-            printf("cur pc:%x, %x, %x\n", cur_guest_pc, env->active_tc.PC, page_addr);
+            //printf("cur pc:%x, %x, %x\n", cur_guest_pc, env->active_tc.PC, page_addr);
             gettimeofday(&handle_addr_start, NULL);
             MISSING_PAGE page;
             page.prot = 1;
@@ -7222,7 +7241,7 @@ void handle_store(CPUArchState *env, target_ulong cur_guest_pc, target_ulong pag
             write_state(env, page_addr);
             uintptr_t phys_addr;
             read_addr(page_addr, &phys_addr);
-            if(mmap_addr == 0)
+            if(phys_addr == 0)
             {
                 printf("handle addr error:%x\n",page.addr);
                 pthread_mutex_unlock(p_mutex_shared);
@@ -7242,7 +7261,7 @@ void handle_store(CPUArchState *env, target_ulong cur_guest_pc, target_ulong pag
 
             gettimeofday(&handle_addr_end, NULL);
             double handle_addr_time  =  (double)handle_addr_end.tv_sec - handle_addr_start.tv_sec + (handle_addr_end.tv_usec - handle_addr_start.tv_usec)/1000000.0;
-            printf("write map time:%f, addr:%lx,%lx\n", handle_addr_time, page_addr, phys_addr);
+            //printf("write map time:%f, addr:%lx,%lx\n", handle_addr_time, page_addr, phys_addr);
             handle_addr_total += handle_addr_time;
         //}
 //zyw part of lightweight snapshot 

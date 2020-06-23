@@ -2242,8 +2242,10 @@ target_ulong ins_pc_analysis(uintptr_t searched_pc, int error_addr);
 target_ulong ins_pc_analysis(uintptr_t searched_pc, int error_addr)
 {
     uint8_t buf[4];
-    int load_op[6] = {0x20, 0x24, 0x21, 0x25, 0x23, 0x39};  //0x39 lwc1
-    int store_op[4] = {0x28, 0x29, 0x2b, 0x31};//0x31 swc1
+    int load_op[13] = {0x20, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x30, 0x31, 0x32, 0x33, 0x35, 0x36};  
+                    //lb,    lh,   lwl,  lw,   lbu, lhu,   lwr,  ll,  lwc1, lwc2, pref, ldc1, ldc2
+    int store_op[11] = {0x28, 0x29, 0x2a, 0x2b, 0x2e, 0x2f, 0x38, 0x39, 0x3a, 0x3d, 0x3c};
+                      //sb,   sh,  swl,   sw,   swr, cache,  sc, swc1, swc2, sdc1, sdc2
     CPUArchState *env = first_cpu->env_ptr;
 
     TranslationBlock * tb = tb_find_pc(searched_pc);
@@ -2269,7 +2271,7 @@ target_ulong ins_pc_analysis(uintptr_t searched_pc, int error_addr)
        which the end of the insn exceeds the searched_pc.  */
     for (i = 0; i < num_insns; ++i) {
         for (j = 0; j < TARGET_INSN_START_WORDS; ++j) {
-            data[j] += decode_sleb128(&p);;
+            data[j] += decode_sleb128(&p);
         }
         host_pc += decode_sleb128(&p);
         if (host_pc > searched_pc) {
@@ -2290,16 +2292,22 @@ target_ulong ins_pc_analysis(uintptr_t searched_pc, int error_addr)
  */  
 
     cpu_memory_rw_debug(first_cpu, data[0], buf, 4, 0);
- 
+#ifdef TARGET_WORDS_BIGENDIAN
+    int opcode = (buf[0] & 0xff) >>2; //mipseb
+    int rs = ((buf[0] & 0x03) << 3) + ((buf[1] & 0xe0) >> 5);
+    int rd = (buf[1] & 0x1f);
+    short im = ((buf[2] & 0xff) << 8) + ((buf[3] & 0xff));
+#else
     int opcode = (buf[3] & 0xff) >>2; //mipsel
     int rs = ((buf[3] & 0x03) << 3) + ((buf[2] & 0xe0) >> 5);
     int rd = (buf[2] & 0x1f);
     short im = ((buf[1] & 0xff) << 8) + ((buf[0] & 0xff));
-    printf("%x,%x,%x,%x, opecode, %x, rs:%d, rd:%d, im:%d, gp:%x\n",buf[0], buf[1], buf[2], buf[3], opcode, rs, rd, im, env->active_tc.gpr[rs]);
-
+#endif
+    //printf("%x,%x,%x,%x, opecode, %x, rs:%d, rd:%d, im:%d, gp:%x\n",buf[0], buf[1], buf[2], buf[3], opcode, rs, rd, im, env->active_tc.gpr[rs]);
+    //printf("cannot anlaysis the instruction:%x, opcode:%x\n", data[0], opcode);
 
     int rw_flag = -1;
-    for(int i = 0; i < 5; i++)
+    for(int i = 0; i < 13; i++)
     {
         if(opcode == load_op[i])
         {
@@ -2307,7 +2315,7 @@ target_ulong ins_pc_analysis(uintptr_t searched_pc, int error_addr)
             break;
         }
     }
-    for(int i = 0; i < 4; i++)
+    for(int i = 0; i < 11; i++)
     {
         if(opcode == store_op[i])
         {
@@ -2320,7 +2328,7 @@ target_ulong ins_pc_analysis(uintptr_t searched_pc, int error_addr)
     {
 
         int src = env->active_tc.gpr[rs] + im;
-        printf("#####load :%d, source:%x\n", rs, src);
+        //printf("#####load :%d, source:%x\n", rs, src);
         if(src == error_addr)
         {
             return data[0];
@@ -2333,7 +2341,7 @@ target_ulong ins_pc_analysis(uintptr_t searched_pc, int error_addr)
     else if(rw_flag == 1)
     {
         int dst = env->active_tc.gpr[rs] + im;
-        printf("#####store :%d, dest:%x\n",rs, dst);
+        //printf("#####store :%d, dest:%x\n",rs, dst);
         if(dst == error_addr)
         {
             return data[0];
@@ -2345,7 +2353,7 @@ target_ulong ins_pc_analysis(uintptr_t searched_pc, int error_addr)
     }
     else
     {
-        printf("cannot anlaysis the instruction\n");
+        //printf("cannot anlaysis the instruction:%x, opcode:%x\n", data[0], opcode);
         int tmp_addr = env->active_tc.gpr[rs] + im;
         if(tmp_addr == error_addr)
         {

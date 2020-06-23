@@ -219,7 +219,7 @@ static void new_kmod_callback(DECAF_Callback_Params* params)
 //  This function is called
 static void traverse_task_struct_add(CPUState *env)
 {
-
+    
     target_ulong task_pid = 0; //zyw change uint32_t to target_ulong
    // uint32_t task_pid = 0;
     uint32_t kernel_count = 0; //zyw
@@ -234,7 +234,6 @@ static void traverse_task_struct_add(CPUState *env)
 
         next_task -= OFFSET_PROFILE.ts_tasks;
 
-
         if(OFFSET_PROFILE.init_task_addr == next_task)
         {
             break;
@@ -242,19 +241,16 @@ static void traverse_task_struct_add(CPUState *env)
 
 
 
-        BREAK_IF(DECAF_read_ptr(env, next_task + OFFSET_PROFILE.ts_mm,
-                                &mm) < 0);
+        BREAK_IF(DECAF_read_ptr(env, next_task + OFFSET_PROFILE.ts_mm, &mm) < 0);
 
-	DECAF_read_ptr(env, next_task + OFFSET_PROFILE.ts_mm,
-                                &mm);
+        //DECAF_read_ptr(env, next_task + OFFSET_PROFILE.ts_mm, &mm);
+
         if (mm != 0)
         {
-
             BREAK_IF(DECAF_read_ptr(env, mm + OFFSET_PROFILE.mm_pgd,
                                     &task_pgd) < 0);
 
-	    DECAF_read_ptr(env, mm + OFFSET_PROFILE.mm_pgd,
-                                    &task_pgd);
+	        //DECAF_read_ptr(env, mm + OFFSET_PROFILE.mm_pgd, &task_pgd);
             proc_cr3 = DECAF_get_phys_addr(env, task_pgd);
         }
 
@@ -262,7 +258,7 @@ static void traverse_task_struct_add(CPUState *env)
         {
             // We don't add kernel processed for now.
             proc_cr3 = -1;
-	    kernel_count++;
+            kernel_count++;
             continue;
         }
 
@@ -293,7 +289,6 @@ static void traverse_task_struct_add(CPUState *env)
 */
         if (!VMI_find_process_by_pgd(proc_cr3))
         {
-
             // get task_pid
             BREAK_IF(DECAF_read_ptr(env, next_task + OFFSET_PROFILE.ts_tgid,
                                     &task_pid) < 0);
@@ -304,7 +299,7 @@ static void traverse_task_struct_add(CPUState *env)
                      ||
                      DECAF_read_ptr(env, ts_real_parent + OFFSET_PROFILE.ts_tgid,
                                     &ts_parent_pid) < 0);
-
+            
             process* pe = new process();
             pe->pid = task_pid;
             pe->parent_pid = ts_parent_pid;
@@ -312,6 +307,7 @@ static void traverse_task_struct_add(CPUState *env)
             pe->EPROC_base_addr = next_task; // store current task_struct's base address
             BREAK_IF(DECAF_read_mem(env, next_task + OFFSET_PROFILE.ts_comm,
                                     SIZEOF_COMM, pe->name) < 0);
+
             VMI_create_process(pe);
 			pe->modules_extracted = false;
         }
@@ -390,7 +386,7 @@ void traverse_mmap(CPUState *env, void *opaque)
     char name[32];	// module file path
     string last_mod_name;
     module *mod = NULL;
-
+    printf("??????????????????????????????????????????traverse_mmap\n");
     if (DECAF_read_ptr(env, proc->EPROC_base_addr + OFFSET_PROFILE.ts_mm, &mm) < 0)
         return;
 
@@ -536,7 +532,7 @@ static void new_proc_callback(DECAF_Callback_Params* params)
     CPUState *env = params->bb.env;
     target_ulong pc = DECAF_getPC(env);
 
-    if(OFFSET_PROFILE.proc_exec_connector != pc)
+    if(OFFSET_PROFILE.proc_exec_connector != pc) //c009dc54
         return;
 
     traverse_task_struct_add(env);
@@ -679,8 +675,6 @@ int find_linux(CPUState *env, uintptr_t insn_handle)
 
     _last_thread_info = _thread_info;
 
-
-
     if(0 != load_proc_info(env, _thread_info, OFFSET_PROFILE))
     {
         return 0;
@@ -810,7 +804,6 @@ gpa_t mips_get_cur_pgd(CPUState *env){
 }
 #endif
 
-
 //zyw
 void traverse_mmap_new(CPUState *env, void *opaque, FILE *fp)
 {
@@ -823,10 +816,9 @@ void traverse_mmap_new(CPUState *env, void *opaque, FILE *fp)
     char name[32];  // module file path
     string last_mod_name;
     module *mod = NULL;
-
     if (DECAF_read_ptr(env, proc->EPROC_base_addr + OFFSET_PROFILE.ts_mm, &mm) < 0)
         return;
-    
+   
     if (DECAF_read_ptr(env, mm + OFFSET_PROFILE.mm_mmap, &mm_mmap) < 0)
         return;
 
@@ -851,7 +843,6 @@ void traverse_mmap_new(CPUState *env, void *opaque, FILE *fp)
         // read start of curr vma
         if (DECAF_read_ptr(env, vma_curr + OFFSET_PROFILE.vma_vm_start,  &vma_vm_start) < 0)
             goto next;
-
         // read end of curr vma
         if (DECAF_read_ptr(env, vma_curr + OFFSET_PROFILE.vma_vm_end,  &vma_vm_end) < 0)
             goto next;

@@ -1,4 +1,3 @@
-
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/version.h>
@@ -12,11 +11,10 @@
 #include <linux/dcache.h>
 
 // UTS_RELEASE may be defined in different files for different release versions
-//#include <generated/utsrelease.h>
-#define UTS_RELEASE  "2.6.32.70"
+#include <generated/utsrelease.h>
 
 #define OFFSET_OF(type, field) (  (unsigned long)&( ((struct type *)0)->field ) )
-#define JPROBE_TOTAL 8
+#define JPROBE_TOTAL 9
 
 /* variables for hookpoints */
 static struct jprobe jprobes[JPROBE_TOTAL];
@@ -39,6 +37,13 @@ static void linuxdrv_finish_exec(struct task_struct * task)
 {
     jprobe_return();
 }
+
+/* this will be called before do_execve finish */  //Keep
+static void linuxdrv_finish_exec_new(struct task_struct * task)
+{
+    jprobe_return();
+}
+
 
 static void linuxdrv_insert_vma(struct mm_struct *mm, struct vm_area_struct *vma)
 {
@@ -78,6 +83,8 @@ static int linuxdrv_init(void)
     jprobes[6].entry = (void*)linuxdrv_remove_vma;
     jprobes[7].kp.symbol_name = "trim_init_extable";
     jprobes[7].entry = (void*)linuxdrv_remove_vma;
+    jprobes[8].kp.symbol_name = "search_binary_handler";
+    jprobes[8].entry = (void*)linuxdrv_finish_exec_new;
 
 
     printk(KERN_INFO
@@ -164,24 +171,23 @@ static int linuxdrv_init(void)
         OFFSET_OF(vm_area_struct, vm_pgoff)
         );
 
-    //printk(KERN_INFO
-        //"file_dentry     = %lu\n" /* offset of f_dentry in file */
-        //"file_inode      = %lu\n" /* inode of file struct */
-        //"dentry_d_name   = %lu\n" /* offset of d_name in dentry */
-        //"dentry_d_iname  = %lu\n" /* offset of d_iname in dentry */
-        //"dentry_d_parent = %lu\n" /* offset of d_parent in dentry */
-        //"ti_task         = %lu\n" /* offset of task in thread_info */
-        //"inode_ino   = %lu\n", /* offset of inode index in inode struct */
-/*
-        OFFSET_OF(file, f_dentry),
+    printk(KERN_INFO
+        "file_dentry     = %lu\n" /* offset of f_dentry in file */
+        "file_inode      = %lu\n" /* inode of file struct */
+        "dentry_d_name   = %lu\n" /* offset of d_name in dentry */
+        "dentry_d_iname  = %lu\n" /* offset of d_iname in dentry */
+        "dentry_d_parent = %lu\n" /* offset of d_parent in dentry */
+        "ti_task         = %lu\n" /* offset of task in thread_info */
+        "inode_ino   = %lu\n", /* offset of inode index in inode struct */
+        OFFSET_OF(file, f_path.dentry),
         OFFSET_OF(dentry, d_inode),
         OFFSET_OF(dentry, d_name),
         OFFSET_OF(dentry, d_iname),
         OFFSET_OF(dentry, d_parent),
         OFFSET_OF(thread_info, task),
         OFFSET_OF(inode,i_ino)
-*/
-       // );
+        );
+
 
     for(i = 0; i < JPROBE_TOTAL; i++) {
         register_jprobe(&jprobes[i]);

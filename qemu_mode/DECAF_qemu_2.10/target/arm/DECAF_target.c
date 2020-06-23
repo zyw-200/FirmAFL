@@ -67,5 +67,5 @@ gpa_t DECAF_getPGD(CPUState* env)
 {
   //return (env->cp15.c2_base0 & env->cp15.c2_base_mask);
   CPUArchState *env_ptr = (CPUArchState *)env->env_ptr;
-  return env_ptr->cp15.ttbr0_el[1];
+  return env_ptr->cp15.ttbr0_el[1] & 0xfffff000;
 }

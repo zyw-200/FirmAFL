@@ -77,7 +77,6 @@ int g_bNeedFlush = 0;
 
 static void convert_endian_4b(uint32_t *data);
 
-
 static gpa_t _DECAF_get_phys_addr(CPUState* env, gva_t addr) {
 	CPUArchState * env_ptr = (CPUArchState *)env->env_ptr;
 	int mmu_idx, index;
@@ -101,7 +100,7 @@ static gpa_t _DECAF_get_phys_addr(CPUState* env, gva_t addr) {
 
 	void *p = (void *) (addr+ env_ptr->tlb_table[mmu_idx][index].addend);
 
-//			(void *) ((addr & TARGET_PAGE_MASK)+ env_ptr->tlb_table[mmu_idx][index].addend);
+//	(void *) ((addr & TARGET_PAGE_MASK)+ env_ptr->tlb_table[mmu_idx][index].addend);
 	//zyw
 	return (gpa_t) qemu_ram_addr_from_host(p);	
 	//return (gpa_t) qemu_ram_addr_from_host_nofail(p);
@@ -141,6 +140,10 @@ gpa_t DECAF_get_phys_addr(CPUState* env, gva_t addr)
 
 }
 
+#ifdef TARGET_ARM
+extern int httpd_pgd;
+#endif
+
 DECAF_errno_t DECAF_memory_rw(CPUState* env, /*uint32_t*/target_ulong addr, void *buf, int len,
 		int is_write) {
 	int l;
@@ -158,18 +161,32 @@ DECAF_errno_t DECAF_memory_rw(CPUState* env, /*uint32_t*/target_ulong addr, void
 
 	while (len > 0) {
 		page = addr & TARGET_PAGE_MASK;
+
 		phys_addr = DECAF_get_phys_addr(env, page);
+
+		//zyw
+#ifdef TARGET_ARM
+		if(phys_addr <0x10000000 && httpd_pgd)
+		{
+			phys_addr = phys_addr + 0x40000000;
+			//printf("phys_addr:%lx,%lx\n",page, phys_addr);
+		}
+#endif
+		printf("page:%lx,%lx\n", page, phys_addr);
+
+#ifdef TARGET_ARM //for arm phys_addr seem >0x4000000 ram_size = 0x10000000
+		if (phys_addr == -1) {
+#else
 		if (phys_addr == -1 || phys_addr > ram_size) {
+#endif
 			ret = -1;
 			break;
 		}
 		l = (page + TARGET_PAGE_SIZE) - addr;
 		if (l > len)
 			l = len;
-
 		cpu_physical_memory_rw(phys_addr + (addr & ~TARGET_PAGE_MASK), buf, l,
 		is_write);
-
 		len -= l;
 		buf += l;
 		addr += l;

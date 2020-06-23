@@ -62,6 +62,9 @@
 #define IS_USER(s) (s->user)
 #endif
 
+//zyw
+static target_ulong cur_pc;
+
 TCGv_env cpu_env;
 /* We reuse the same 64-bit temporaries for efficiency.  */
 static TCGv_i64 cpu_V0, cpu_V1, cpu_M0;
@@ -4171,6 +4174,18 @@ static void gen_goto_ptr(void)
 static void gen_goto_tb(DisasContext *s, int n, target_ulong dest)
 {
     if (use_goto_tb(s, dest)) {
+        //zyw
+         TranslationBlock * tb = s->tb;
+        if(DECAF_is_BlockEndCallback_needed(tb->pc, dest))
+        {
+          TCGv_ptr tmpTb = tcg_const_ptr((tcg_target_ulong)tb);
+          TCGv tmpFrom = tcg_temp_new();
+          tcg_gen_movi_tl(tmpFrom, cur_pc);
+          gen_helper_DECAF_invoke_block_end_callback(cpu_env, tmpTb, tmpFrom);
+          tcg_temp_free(tmpFrom);
+          tcg_temp_free_ptr(tmpTb);
+        }
+
         tcg_gen_goto_tb(n);
         gen_set_pc_im(s, dest);
         tcg_gen_exit_tb((uintptr_t)s->tb + n);
@@ -11935,6 +11950,20 @@ void gen_intermediate_code(CPUState *cs, TranslationBlock *tb)
         tcg_gen_movi_i32(tmp, 0);
         store_cpu_field(tmp, condexec_bits);
       }
+//zyw
+    if(DECAF_is_BlockBeginCallback_needed(tb->pc))
+    {
+      //LOK: While we can define a new TCG operation for tcg_gen_movi_ptr in tcg/tcg-op.h we will just use tcg_const_ptr macro instead
+      //tcg_target_ulong is defined in tcg.h and
+      // according to the definition, it is defined as 64 bits if UINTPTR_MAX is UINT64_MAX
+      // which implies that the TCG target is the HOST
+      TCGv_ptr tmpTb = tcg_const_ptr((tcg_target_ulong)tb);
+      gen_helper_DECAF_invoke_block_begin_callback(cpu_env, tmpTb);
+      tcg_temp_free_ptr(tmpTb);
+      //LOK: I wonder if I really have to call tcg_temp_free_ptr
+      // since all of the other calls to tcg_const... don't have it
+    }
+
     do {
         dc->insn_start_idx = tcg_op_buf_count();
         tcg_gen_insn_start(dc->pc,
@@ -12000,6 +12029,9 @@ void gen_intermediate_code(CPUState *cs, TranslationBlock *tb)
                           default_exception_el(dc));
             goto done_generating;
         }
+
+        //next_pc = (-1);
+        cur_pc = pc_start;
 
         if (dc->thumb) {
             disas_thumb_insn(env, dc);

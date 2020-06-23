@@ -298,6 +298,7 @@ gva_t  findTaskStructFromThreadInfo(CPUState * env, gva_t threadinfo, ProcInfo* 
     candidate = 0;
     // candidate = (get_target_ulong_at(env, temp));
     DECAF_read_ptr(env, temp, &candidate);
+
     //if it looks like a kernel address
     if (isKernelAddress(candidate))
     {
@@ -1791,6 +1792,11 @@ int load_proc_info(CPUState * env, gva_t threadinfo, ProcInfo &pi)
 
   // find init_task_addr
   tulInitTaskAddr = findTaskStructFromThreadInfo(env, threadinfo, &pi, 0);
+//zyw
+#ifdef TARGET_ARM
+  tulInitTaskAddr = 3227507384;
+#endif
+
   // tulInitTaskAddr = 2154330880;
   if (INV_ADDR == tulInitTaskAddr)
   {

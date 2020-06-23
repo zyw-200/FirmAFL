@@ -1,4 +1,4 @@
-//#define FULL
+#define FULL
 
 #ifdef FULL
 
@@ -15,7 +15,7 @@
 #define DECAF
 #define MEM_MAPPING
 #define PRE_MAPPING
-//#define NEW_MAPPING
+#define NEW_MAPPING
 //if use new_mapping, cannot user pre_mapping
 
 //#define DEBUG

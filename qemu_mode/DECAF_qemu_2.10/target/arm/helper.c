@@ -8644,7 +8644,7 @@ bool arm_tlb_fill(CPUState *cs, vaddr address,
         /* Map a single [sub]page.  */
         phys_addr &= TARGET_PAGE_MASK;
         address &= TARGET_PAGE_MASK;
-        printf("page size:%x, %x\n", address, page_size);
+        //printf("page size:%x, %x\n", address, page_size);
         tlb_set_page_with_attrs(cs, address, phys_addr, attrs,
                                 prot, mmu_idx, page_size);
         return 0;

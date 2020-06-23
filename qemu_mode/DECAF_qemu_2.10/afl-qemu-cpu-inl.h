@@ -53,10 +53,18 @@
    _start and does the usual forkserver stuff, not very different from
    regular instrumentation injected via afl-as.h. */
 
-
+#ifdef TARGET_MIPS
 #define AFL_QEMU_CPU_SNIPPET2 do { \
     afl_maybe_log(env->active_tc.PC); \
   } while (0)
+#endif
+
+#ifdef TARGET_ARM
+#define AFL_QEMU_CPU_SNIPPET2 do { \
+    afl_maybe_log(env->regs[15]); \
+  } while (0)
+#endif
+  
 /*
 #define AFL_QEMU_CPU_SNIPPET2 do { \
     if(itb->pc == afl_entry_point) { \

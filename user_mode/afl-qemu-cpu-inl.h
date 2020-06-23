@@ -311,14 +311,14 @@ static void start_run(void) {
    _start and does the usual forkserver stuff, not very different from
    regular instrumentation injected via afl-as.h. */
 
-extern void feed_input(CPUState *env);
+extern void get_input(CPUState *env);
 int fork_times = 0;
 #define AFL_QEMU_CPU_SNIPPET2 do { \
     if(pc == afl_entry_point && fork_times==0) { \
       fork_times=1; \
       afl_setup(); \
       afl_forkserver(cpu); \
-      feed_input(cpu); \
+      get_input(cpu); \
     } \
     afl_maybe_log(pc); \
   } while (0)
