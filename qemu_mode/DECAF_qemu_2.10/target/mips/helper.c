@@ -583,23 +583,7 @@ int mips_cpu_handle_mmu_fault(CPUState *cs, vaddr address, int rw,
         tlb_set_page(cs, address & TARGET_PAGE_MASK,
                      physical & TARGET_PAGE_MASK, prot | PAGE_EXEC,
                      mmu_idx, TARGET_PAGE_SIZE);
-/*
-#ifdef NEW_MAPPING
-        if(into_normal_execution == 1)
-        {
-            if(address < 0x80000000)
-            {     
-                if(address == handle_addr)
-                {
-                    DECAF_printf("tlb set:%lx, %lx\n", address, physical); 
-                    write_vaddr = address;
-                    write_paddr = physical;
-                    tlb_match = 1;
-                }      
-            }       
-        }
-#endif
-*/
+
         ret = 0;
     } else if (ret < 0)
 #endif

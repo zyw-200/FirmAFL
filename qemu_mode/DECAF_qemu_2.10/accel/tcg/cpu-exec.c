@@ -2403,22 +2403,7 @@ int cpu_exec(CPUState *cpu)
 
     /* prepare setjmp context for exception handling */
     if (sigsetjmp(cpu->jmp_env, 0) != 0) {
-/*
-#ifdef NEW_MAPPING
-        if(tlb_match)
-        {
-            tlb_match = 0;
-            DECAF_printf("jump back\n");
-            into_normal_execution = 0;
-            afl_wants_cpu_to_stop = 1;
-            exit_status = 0;
-            uintptr_t tmp_vaddr = write_vaddr;
-            uintptr_t tmp_paddr = write_paddr;
-            write_addr(tmp_vaddr, tmp_paddr);
-            goto end;
-        }
-#endif
-*/
+
 #if defined(__clang__) || !QEMU_GNUC_PREREQ(4, 6)
         /* Some compilers wrongly smash all local variables after
          * siglongjmp. There were bug reports for gcc 4.5.0 and clang.
@@ -2620,7 +2605,7 @@ skip_to_pos:
 #elif defined(TARGET_ARM)
             target_ulong pc = env->regs[15];
             target_ulong a0 = env->regs[0];
-            target_ulong a1 =env->regs[1];
+            target_ulong a1 = env->regs[1];
             target_ulong a2 = env->regs[2];
             target_ulong ra = env->regs[14];
             target_ulong ret = env->regs[0];
@@ -2630,32 +2615,6 @@ skip_to_pos:
 #endif
 
 #ifdef NEW_MAPPING
-/*
-            if(afl_user_fork && handle_addr !=0) //normal execution
-            {
-                if(into_normal_execution == 0 && pc < 0x80000000)
-                {
-                    into_normal_execution = 1;
-                    int ind =  (handle_addr >> 12) & 255;
-                    target_ulong addr_code = env->tlb_table[2][ind].addr_code;
-                    target_ulong addr_read = env->tlb_table[2][ind].addr_read;
-                    target_ulong addr_write = env->tlb_table[2][ind].addr_write;
-                    uintptr_t addend = env->tlb_table[2][ind].addend;
-                    DECAF_printf("into normal execution:%x, %x,%x,%x, %lx\n",handle_addr, addr_code, addr_read, addr_write,addend);        
-                    normal_execution_tb = pc;
-
-                    if((handle_addr & 0xfffff000) == addr_write)
-                    {
-                        into_normal_execution = 0;
-                        target_ulong final_phys_addr = qemu_ram_addr_from_host(addr_write + addend);
-                        write_addr(handle_addr, final_phys_addr + (handle_addr & 0xfff));
-                        exit_status = 0;
-                        afl_wants_cpu_to_stop = 1;
-                        goto end;   
-                    }
-                } 
-            }          
-*/
 
             if(afl_user_fork && handle_addr !=0) //normal execution
             {

@@ -2465,17 +2465,7 @@ void tlb_fill(CPUState *cs, target_ulong addr, MMUAccessType access_type,
         do_raise_exception_err(env, cs->exception_index,
                                env->error_code, retaddr);
     }
-/*
-#ifdef NEW_MAPPING
-    else
-    {
-      if(tlb_match == 1)
-      {
-        cpu_loop_exit_restore(cs, retaddr);
-      }
-    }
-#endif
-*/
+
 }
 
 void mips_cpu_unassigned_access(CPUState *cs, hwaddr addr,
