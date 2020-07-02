@@ -219,14 +219,14 @@ static void new_kmod_callback(DECAF_Callback_Params* params)
 //  This function is called
 static void traverse_task_struct_add(CPUState *env)
 {
-    
+
     target_ulong task_pid = 0; //zyw change uint32_t to target_ulong
    // uint32_t task_pid = 0;
     uint32_t kernel_count = 0; //zyw
     const int MAX_LOOP_COUNT = 10240;	// prevent infinite loop
     target_ulong next_task, mm, proc_cr3, task_pgd, ts_parent_pid, ts_real_parent;
     next_task = OFFSET_PROFILE.init_task_addr;
-    
+
     for (int count = MAX_LOOP_COUNT; count > 0; --count)
     {
         BREAK_IF(DECAF_read_ptr(env, next_task + (OFFSET_PROFILE.ts_tasks + sizeof(target_ptr)),
@@ -243,14 +243,13 @@ static void traverse_task_struct_add(CPUState *env)
 
         BREAK_IF(DECAF_read_ptr(env, next_task + OFFSET_PROFILE.ts_mm, &mm) < 0);
 
-        //DECAF_read_ptr(env, next_task + OFFSET_PROFILE.ts_mm, &mm);
-
+	//DECAF_read_ptr(env, next_task + OFFSET_PROFILE.ts_mm, &mm);
         if (mm != 0)
         {
             BREAK_IF(DECAF_read_ptr(env, mm + OFFSET_PROFILE.mm_pgd,
                                     &task_pgd) < 0);
 
-	        //DECAF_read_ptr(env, mm + OFFSET_PROFILE.mm_pgd, &task_pgd);
+	//DECAF_read_ptr(env, mm + OFFSET_PROFILE.mm_pgd, &task_pgd);
             proc_cr3 = DECAF_get_phys_addr(env, task_pgd);
         }
 
@@ -262,33 +261,9 @@ static void traverse_task_struct_add(CPUState *env)
             continue;
         }
 
-// zyw
-/*
-	process * proc = VMI_find_process_by_pgd(proc_cr3);
-	if(proc){
-	    printf("proc_name:%s,proc_pid:%d,task_pgd:%x,proc_cr3:%x\n",proc->name,proc->pid,task_pgd,proc_cr3);
-	}
-*/
-        //zyw
-
-/*
-	char proc_name_1[1000];
-	DECAF_read_mem(env, next_task + OFFSET_PROFILE.ts_comm,
-		            SIZEOF_COMM, proc_name_1);
-	printf("proc_name:%s,proc_cr3:%x\n",proc_name_1,proc_cr3);
-
-
-	char proc_name[1000];
-	DECAF_read_mem(env, next_task + OFFSET_PROFILE.ts_comm,
-		            SIZEOF_COMM, proc_name);
-	process * proc = VMI_find_process_by_pgd(proc_cr3);
-	if(strcmp(proc_name, "httpd") == 0){
-	    //printf("\n\n\n\n\nproc_name:%s,proc_cr3:%x,find_result:%s\n\n\n\n\n",proc_name,proc_cr3,proc->name);
-	    printf("proc_name:%s,proc_cr3:%x,find_result:%s\n",proc_name,proc_cr3,proc->name);
-	}
-*/
         if (!VMI_find_process_by_pgd(proc_cr3))
         {
+
             // get task_pid
             BREAK_IF(DECAF_read_ptr(env, next_task + OFFSET_PROFILE.ts_tgid,
                                     &task_pid) < 0);
@@ -299,7 +274,7 @@ static void traverse_task_struct_add(CPUState *env)
                      ||
                      DECAF_read_ptr(env, ts_real_parent + OFFSET_PROFILE.ts_tgid,
                                     &ts_parent_pid) < 0);
-            
+
             process* pe = new process();
             pe->pid = task_pid;
             pe->parent_pid = ts_parent_pid;
@@ -386,7 +361,7 @@ void traverse_mmap(CPUState *env, void *opaque)
     char name[32];	// module file path
     string last_mod_name;
     module *mod = NULL;
-    printf("??????????????????????????????????????????traverse_mmap\n");
+
     if (DECAF_read_ptr(env, proc->EPROC_base_addr + OFFSET_PROFILE.ts_mm, &mm) < 0)
         return;
 
@@ -532,7 +507,7 @@ static void new_proc_callback(DECAF_Callback_Params* params)
     CPUState *env = params->bb.env;
     target_ulong pc = DECAF_getPC(env);
 
-    if(OFFSET_PROFILE.proc_exec_connector != pc) //c009dc54
+    if(OFFSET_PROFILE.proc_exec_connector != pc)
         return;
 
     traverse_task_struct_add(env);

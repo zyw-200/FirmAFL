@@ -825,7 +825,7 @@ void helper_DECAF_invoke_block_begin_callback(CPUArchState* env, TranslationBloc
 #endif
 	CPUState *cs = CPU(cpu);
 	params.bb.env = cs;
-  	params.bb.tb = tb;
+  params.bb.tb = tb;
 //zyw
 
 PUSH_ALL()

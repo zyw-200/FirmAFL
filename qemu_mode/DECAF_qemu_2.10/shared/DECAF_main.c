@@ -172,7 +172,7 @@ DECAF_errno_t DECAF_memory_rw(CPUState* env, /*uint32_t*/target_ulong addr, void
 			//printf("phys_addr:%lx,%lx\n",page, phys_addr);
 		}
 #endif
-		printf("page:%lx,%lx\n", page, phys_addr);
+		
 
 #ifdef TARGET_ARM //for arm phys_addr seem >0x4000000 ram_size = 0x10000000
 		if (phys_addr == -1) {
