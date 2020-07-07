@@ -3536,7 +3536,7 @@ void cpu_loop(CPUMIPSState *env)
                     
 
 #ifdef MEM_MAPPING    
-                    printf("local syscall:%d, ret:%d\n", syscall_num, ret)          
+                    printf("local syscall:%d, ret:%d\n", syscall_num, ret);          
                     if((program_id == 129780 || program_id == 129781) && syscall_num == 5)
                     {
                         chdir("/");
