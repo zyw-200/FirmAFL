@@ -6388,7 +6388,7 @@ int main(int argc, char **argv, char **envp)
 
 
 
-#ifdef PRE_MAPPING
+#if defined(PRE_MAPPING) && defined(TARGET_MIPS)
     printf("pre_mapping start\n");
     for(int k=0; k<vir_spa_index; k++)
     {
@@ -6499,6 +6499,7 @@ int main(int argc, char **argv, char **envp)
             if(page_prot == 5)
             {
                 printf("pre mapping:%x\n", page.addr);
+                env->regs[15] = page.addr;
                 write_state(env, page.addr, page.prot);
                 uintptr_t phys_addr;
                 read_addr(page.addr, &phys_addr);

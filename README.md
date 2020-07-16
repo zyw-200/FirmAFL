@@ -54,7 +54,7 @@ Our system has two parts: system mode and user mode. We compile them separately 
 	cd ..
 	python FirmAFL_setup.py 9050 mipsel
 
-4. modify the run.sh manually as following,  in order to emulate firmware with our modified QEMU and kernel, and running on the RAM file.
+4. modify the run.sh in image_9050 directory as following,  in order to emulate firmware with our modified QEMU and kernel, and running on the RAM file.
 >For mipsel,
 
 	ARCH=mipsel
@@ -97,4 +97,12 @@ Our system is built on top of TriforceAFL, DECAF, AFL, and Firmadyne.
 
 (1) error: static declaration of ‘memfd_create’ follows non-static declaration
 
-Please see https://blog.csdn.net/newnewman80/article/details/90175033
+Please see https://blog.csdn.net/newnewman80/article/details/90175033.
+
+(2) failed to find romfile "efi-e1000.rom"  when run the "run.sh"
+
+Use the run.sh in FirmAFL_config/9050/ instead.
+
+(3) Fork server crashed with signal 11
+
+Run scripts in start.py sequentially. First run "run.sh", when the testing program starts, run "python test.py", and "user.sh".
