@@ -1,0 +1,10 @@
+mapping_filename=../image_332/mapping_table
+init_read_pipename=../image_332/user_cpu_state
+write_pipename=../image_332/full_cpu_state
+start_fork_pc=0xd26c
+program_analysis=busybox
+lib_name=libuClibc-0.9.30.1.so
+environ_offset=0x72bf0
+feed_type=FEED_ENV
+id=332
+opti=yes

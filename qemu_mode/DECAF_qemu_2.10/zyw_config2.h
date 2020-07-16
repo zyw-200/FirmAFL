@@ -5,7 +5,6 @@ int program_start = 0;
 int first_or_new_pgd = 1; //0 first 1 new; // 0 tplink httpd
 //#define multiple_process //Trendnet jjhttpd Netgear lighttpd
 
-
 int fork_times = 0;
 double tlb_time_interval = 0.0; //tlb
 double tlb_time_interval_total = 0.0; //tlb
@@ -92,11 +91,9 @@ void truncate_sysinfo()
 
 //NEW_MAPPING
 int into_normal_execution = 0;
-int handle_addr;
 int normal_execution_tb = 0;
 int tlb_match = 0;
-int write_vaddr = 0;
-int write_paddr = 0;
+
 
 int print_debug = 0;
 int print_pc_times = 0;

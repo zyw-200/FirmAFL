@@ -2236,9 +2236,10 @@ int ret_tb_pc(uintptr_t searched_pc)
     }
 }
 
+target_ulong ins_pc_analysis(uintptr_t searched_pc, int error_addr);
+
 #ifdef TARGET_MIPS   
 
-target_ulong ins_pc_analysis(uintptr_t searched_pc, int error_addr);
 target_ulong ins_pc_analysis(uintptr_t searched_pc, int error_addr)
 {
     uint8_t buf[4];
@@ -2367,6 +2368,164 @@ target_ulong ins_pc_analysis(uintptr_t searched_pc, int error_addr)
     //printf("pc is:%lx,%lx\n", GETPC(), searched_pc);
     //assert(searched_pc == GETPC());
 
+}
+
+#endif
+
+#ifdef TARGET_ARM
+
+target_ulong ins_pc_analysis(uintptr_t searched_pc, int error_addr)
+{
+    uint8_t buf[4];
+   
+    CPUArchState *env = first_cpu->env_ptr;
+
+    TranslationBlock * tb = tb_find_pc(searched_pc);
+    if(tb==NULL)
+    {
+        return 0;
+    }
+    target_ulong data[TARGET_INSN_START_WORDS] = { tb->pc };
+    uintptr_t host_pc = (uintptr_t)tb->tc_ptr;
+    uint8_t *p = tb->tc_search;
+    int i, j, num_insns = tb->icount;
+#ifdef CONFIG_PROFILER
+    int64_t ti = profile_getclock();
+#endif
+
+    searched_pc -= GETPC_ADJ;
+
+    if (searched_pc < host_pc) {
+        return -1;
+    }
+
+    /* Reconstruct the stored insn data while looking for the point at
+       which the end of the insn exceeds the searched_pc.  */
+    for (i = 0; i < num_insns; ++i) {
+        for (j = 0; j < TARGET_INSN_START_WORDS; ++j) {
+            data[j] += decode_sleb128(&p);
+        }
+        host_pc += decode_sleb128(&p);
+        if (host_pc > searched_pc) {
+            goto found;
+        }
+    }
+    return -1;
+
+ found:
+
+    cpu_memory_rw_debug(first_cpu, data[0], buf, 4, 0);
+
+    //printf("data0:%x, buf %x,%x, %x, %x\n",data[0], buf[3], buf[2], buf[1], buf[0]);
+//only little endian for arm
+    int opcode = (buf[3] & 0x0c) >> 2; 
+    int rn = buf[2] & 0x0f;
+    int rd = (buf[1] & 0xf0) >> 4; 
+    short rw_flag = (buf[2] & 0x10) >> 4; // 0 store, 1 load
+    short up_flag = (buf[2] & 0x80) >> 7; // 0 subtract, 1 add
+    short post_flag = buf[3] & 0x01; //0 post, 1 pre (often 1)
+    //printf("rn:%d,%x, rd:%d,%x\n", rn, env->regs[rn], rd, env->regs[rd]);
+
+    short ldr_flag = (buf[3] & 0x0c) >> 2; //01 means ldr or str
+    short ldm_flag = (buf[3] & 0x0e) >> 1; //100 means ldm or stm;  000 means halfword transfer
+    short half_flag = (buf[0] & 0x90) >> 4;
+    int normal_ldr = 0;
+
+    int addr = 0, offset = 0;
+    //printf("load or store:%d\n", rw_flag);
+    //ldr or str
+    if(ldr_flag == 1)
+    {
+        normal_ldr = 1;
+        short im_flag = (buf[3] & 0x02) >> 1; // >> .> &
+        if(im_flag == 0)
+        {
+            offset = ((buf[1] & 0x0f) << 8) + buf[0];
+            //printf("ldr or str rd:%d, rn:%d, im offset %x\n", rd ,rn, offset);
+        }
+        else
+        {
+            int rm = buf[0] & 0x0f;
+            int shift_offset = ((buf[1] & 0x0f) << 4) + ((buf[0] & 0xf0) >> 4);
+            offset = env->regs[rm] + shift_offset;
+            //printf("ldr or str rd:%d, rn:%d, rm:%d, im offset %x, offset:%x\n", rd, rn, rm, shift_offset, offset);
+        }
+        
+        
+    }
+    else if(ldm_flag == 4)
+    {
+        normal_ldr = 0;
+        int reg_list = (buf[1] << 8) + buf[0];
+        //printf("ldm or stm regs");
+        for(int pos = 0; pos < 16; pos++)
+        {
+            if((reg_list & (1 << pos)) != 0)
+            {
+                //printf("%d,", pos);
+                offset += env->regs[pos];
+            }
+        }
+        //printf("\n");
+
+    }
+    else if(ldm_flag == 0 && half_flag == 9)
+    {
+        normal_ldr = 1;
+        short half_type = (buf[2] & 0x40) >> 2;
+        if(half_type == 1)
+        {
+            offset = ((buf[1] & 0x0f) << 4) + (buf[0] & 0x0f);
+            //printf("half ld or st rd:%d, rn:%d, offset:%x\n", rd, rn, offset);
+        }
+        else
+        {
+            int rm = buf[0] & 0x0f;
+            offset = env->regs[rm]; 
+            //printf("half ld or st rd:%d, rn:%d, rm:%x, rm offset:%x\n", rd, rn, rm, offset);
+        }
+
+    }
+    else
+    {
+        //printf("ldr flag:%d, ldm flag:%d, half_flag:%d\n", ldr_flag, ldm_flag, half_flag);
+    }
+
+    if(normal_ldr == 1)
+    {
+        if(post_flag == 0)
+        {
+            addr = env->regs[rn];
+            //printf("post addr:%x\n", addr);
+        }
+        else
+        {
+            if(up_flag == 1)
+            {
+                
+                addr =env->regs[rn] + offset;
+                //printf("add addr:%x\n", addr);
+            }
+            else
+            {   
+                addr = env->regs[rn] - offset;
+                //printf("sub addr:%x\n", addr);
+            }
+        }
+    }
+    else //ldm stm
+    {
+        addr = offset;
+    }
+    
+    if(addr == error_addr)
+    {
+        return data[0];
+    }
+    else
+    {
+        return data[0] + 4;
+    }
 }
 
 #endif

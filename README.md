@@ -39,17 +39,19 @@ Our system has two parts: system mode and user mode. We compile them separately 
 
 ## Usage
 
-1.  Setup the firmadyne including importing its datasheet https://cmu.app.boxcn.net/s/hnpvf1n72uccnhyfe307rc2nb9rfxmjp into database.
+1.  Download the Firmdyne repo to the root directory of FirmAFL, then setup the firmadyne according to its instructions including importing its datasheet https://cmu.app.boxcn.net/s/hnpvf1n72uccnhyfe307rc2nb9rfxmjp into database.
 
 2.  Replace the scripts/makeImage.sh with modified one in firmadyne_modify directory.
 
 3.  follow the guidance from firmadyne to generate the system running scripts. 
 >Take DIR-815 router firmware as a example,
-
+	
+	cd firmadyne
 	./sources/extractor/extractor.py -b dlink -sql 127.0.0.1 -np -nk "../firmware/DIR-815_FIRMWARE_1.01.ZIP" images
 	./scripts/getArch.sh ./images/9050.tar.gz
 	./scripts/makeImage.sh 9050
 	./scripts/inferNetwork.sh 9050
+	cd ..
 	python FirmAFL_setup.py 9050 mipsel
 
 4. modify the run.sh manually as following,  in order to emulate firmware with our modified QEMU and kernel, and running on the RAM file.
@@ -71,7 +73,7 @@ Our system has two parts: system mode and user mode. We compile them separately 
 	${QEMU} -m 256 -mem-prealloc -mem-path ${MEM_FILE} -M ${QEMU_MACHINE} -kernel ${KERNEL} \
 
 5. run the fuzzing process
->after running the start.py script, FirmAFL will start the firmware emulation, and after the system initialization(120s), the fuzzing process will start.
+>after running the start.py script, FirmAFL will start the firmware emulation, and after the system initialization(120s), the fuzzing process will start. (Maybe you should use root privilege to run it.)
 
 	cd image_9050
 	python start.py 9050
@@ -89,3 +91,10 @@ Our system is built on top of TriforceAFL, DECAF, AFL, and Firmadyne.
 **AFL:** american fuzzy lop (2.52b), http://lcamtuf.coredump.cx/afl/.
 
 **Firmadyne:** Daming D. Chen, Maverick Woo, David Brumley, and Manuel Egele. “Towards automated dynamic analysis for Linux-based embedded firmware,” in Network and Distributed System Security Symposium (NDSS’16), 2016. https://github.com/firmadyne.
+
+
+## Troubleshooting
+
+(1) error: static declaration of ‘memfd_create’ follows non-static declaration
+
+Please see https://blog.csdn.net/newnewman80/article/details/90175033

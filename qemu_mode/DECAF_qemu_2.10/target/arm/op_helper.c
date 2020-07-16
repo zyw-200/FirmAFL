@@ -188,6 +188,8 @@ void tlb_fill_helper(CPUState *cs, target_ulong addr, MMUAccessType access_type,
     return ret;
 }
 
+extern int afl_user_fork;
+extern int handle_addr;
 void tlb_fill(CPUState *cs, target_ulong addr, MMUAccessType access_type,
               int mmu_idx, uintptr_t retaddr)
 {
@@ -202,12 +204,10 @@ void tlb_fill(CPUState *cs, target_ulong addr, MMUAccessType access_type,
         uint32_t syn, exc, fsc;
         unsigned int target_el;
         bool same_el;
-
         if (retaddr) {
             /* now we have a real cpu fault */
             cpu_restore_state(cs, retaddr);
         }
-
         target_el = exception_target_el(env);
         if (fi.stage2) {
             target_el = 2;
@@ -250,6 +250,19 @@ void tlb_fill(CPUState *cs, target_ulong addr, MMUAccessType access_type,
         env->exception.vaddress = addr;
         env->exception.fsr = fsr;
         raise_exception(env, exc, syn, target_el);
+    }
+    else
+    {
+        //when ret is 0, that means arm_tlb_fill success
+        if(afl_user_fork && addr == handle_addr)
+        {
+            //printf("ret addr:%x, addr:%x, access_type:%d, mmu_idx:%d\n", retaddr, addr, access_type, mmu_idx);
+            if (retaddr) {
+                /* now we have a real cpu fault */
+                cpu_restore_state(cs, retaddr);
+            }
+            siglongjmp(cs->jmp_env, 1);
+        }
     }
 }
 

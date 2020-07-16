@@ -166,7 +166,8 @@ DECAF_errno_t DECAF_memory_rw(CPUState* env, /*uint32_t*/target_ulong addr, void
 
 		//zyw
 #ifdef TARGET_ARM
-		if(phys_addr <0x10000000 && httpd_pgd)
+		if(phys_addr <0x10000000 )
+		//if(phys_addr <0x10000000 && httpd_pgd)
 		{
 			phys_addr = phys_addr + 0x40000000;
 			//printf("phys_addr:%lx,%lx\n",page, phys_addr);

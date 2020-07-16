@@ -6,16 +6,24 @@ firm_arch = sys.argv[2]
 firm_dir = "image"+firm_id
 
 sys_run_src = "firmadyne/scratch/%s/run.sh" %firm_id
+#sys_run_src = "FirmAFL_config/%s/run.sh" %(firm_id)
 user_run_src = "FirmAFL_config/user.sh"
-sys_src = "qemu_mode/DECAF_qemu_2.10/%s-softmmu/qemu-system-%s" %(firm_arch, firm_arch)
-user_src = "user_mode/%s-linux-user/qemu-%s" %(firm_arch, firm_arch)
+if "mips" in firm_arch:
+	sys_src = "qemu_mode/DECAF_qemu_2.10/%s-softmmu/qemu-system-%s" %(firm_arch, firm_arch)
+	user_src = "user_mode/%s-linux-user/qemu-%s" %(firm_arch, firm_arch)
+else:
+	sys_src = "qemu_mode/DECAF_qemu_2.10/arm-softmmu/qemu-system-arm"
+	user_src = "user_mode/arm-linux-user/qemu-arm" 
 config_src = "FirmAFL_config/%s/FirmAFL_config" %(firm_id)
 test_src = "FirmAFL_config/%s/test.py" %(firm_id)
 keywords_src = "FirmAFL_config/%s/keywords" %(firm_id)
 afl_src= "FirmAFL_config/afl-fuzz"
 firmadyne_src = "firmadyne/firmadyne.config"
 image_src = "firmadyne/scratch/%s/image.raw" %firm_id
-kernel_src ="firmadyne_modify/vmlinux.%s_3.2.1" %firm_arch
+if "mips" in firm_arch:
+	kernel_src ="firmadyne_modify/vmlinux.%s_3.2.1" %firm_arch
+else:
+	kernel_src ="firmadyne_modify/zImage.armel"
 procinfo_src =  "FirmAFL_config/procinfo.ini"
 other_file1 =  "FirmAFL_config/efi-pcnet.rom"
 other_file2 =  "FirmAFL_config/vgabios-cirrus.bin"

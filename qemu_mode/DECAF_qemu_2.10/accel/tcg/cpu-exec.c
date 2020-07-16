@@ -58,7 +58,6 @@ int CP0_UserLocal = 0;
 #include "zyw_config1.h"
 #include "zyw_config2.h"
 
-
 #ifdef SNAPSHOT_SYNC
 char *phys_addr_stored_bitmap; 
 
@@ -147,6 +146,20 @@ int write_addr(uintptr_t ori_addr, uintptr_t addr);
 #endif
 #include "sysemu/cpus.h"
 #include "sysemu/replay.h"
+
+
+#ifdef TARGET_MIPS
+target_ulong kernel_base = 0x80000000;
+#elif defined(TARGET_ARM)
+target_ulong kernel_base = 0xc0000000;
+#endif
+
+
+target_ulong handle_addr;
+int handle_addr_prot;
+target_ulong write_vaddr = 0;
+target_ulong write_paddr = 0;
+
 
 #ifdef MEM_MAPPING
 typedef struct MISSING_PAGE{
@@ -301,7 +314,7 @@ target_ulong getWork(char * ptr, target_ulong sz)
     fp = fopen(aflFile, "rb");
     if(!fp) {
         perror(aflFile);
-        printf("aflfile open failed\n");
+        printf("aflfile open failed:%s\n", aflFile);
         return errno;
     }
     retsz = 0;
@@ -819,7 +832,7 @@ static void fuzz_mem_write(DECAF_Callback_Params *dcp)
         } 
 // memory consistence
 #ifdef SNAPSHOT_SYNC
-        if(in_httpd && (virt_addr<0x80000000))
+        if(in_httpd && (virt_addr < kernel_base))
         {
 
             int ifexist = if_physical_exist(phys_addr & 0xfffff000);
@@ -858,7 +871,7 @@ static void callbacktests_loadmainmodule_callback(VMI_Callback_Params* params)
 
     //VMI_find_process_by_cr3_c(params->cp.cr3, procname, 64, &pid);
     VMI_find_process_by_cr3_all(params->cp.cr3, procname, 64, &pid, &par_pid);
-    printf("new process:%s,%x\n", procname, params->cp.cr3);
+    //printf("new process:%s,%x\n", procname, params->cp.cr3);
     if (pid == (uint32_t)(-1))
     {
         return;
@@ -879,7 +892,7 @@ static void callbacktests_loadmainmodule_callback(VMI_Callback_Params* params)
         char modname2[512];
         target_ulong base2;
         FILE *fp3 = fopen("mapping1111", "w");
-        printf("hahahahahah httpd_pgd:%x\n", httpd_pgd);
+        printf("httpd_pgd:%x\n", httpd_pgd);
         print_mapping(modname2, httpd_pgd, &base2, fp3);// obtain mapping
         fclose(fp3);
         //pro_start = 1;
@@ -1090,7 +1103,7 @@ static inline tcg_target_ulong cpu_tb_exec(CPUState *cpu, TranslationBlock *itb)
     {
 
 #ifdef FUZZ
-        if(afl_user_fork && !into_syscall && itb->pc < 0x80000000) //important
+        if(afl_user_fork && !into_syscall && itb->pc < kernel_base) //important
         //if(afl_user_fork && into_syscall == 0 && itb->pc!=last_log_pc) //important
         {
             target_ulong pgd = DECAF_getPGD(cpu);
@@ -1601,10 +1614,17 @@ void print_tlb(CPUArchState *env, FILE * fp)
     {
         int prot = -1;
         target_ulong addr = 0;
+#ifdef TARGET_MIPS
         target_ulong addr_code = env->tlb_table[2][index].addr_code;
         target_ulong addr_read = env->tlb_table[2][index].addr_read;
         target_ulong addr_write = env->tlb_table[2][index].addr_write;
         uintptr_t addend = env->tlb_table[2][index].addend;
+#elif defined(TARGET_ARM)
+        target_ulong addr_code = env->tlb_table[0][index].addr_code;
+        target_ulong addr_read = env->tlb_table[0][index].addr_read;
+        target_ulong addr_write = env->tlb_table[0][index].addr_write;
+        uintptr_t addend = env->tlb_table[0][index].addend;
+#endif
         if(addr_write!= -1)
         {
             addr = addr_write;
@@ -2172,7 +2192,7 @@ int start_fork(CPUState *cpu, target_ulong pc)
             fprintf(fp ,"%x\n", env->CP0_Status);
             fprintf(fp ,"%x\n", env->CP0_Cause);
             fprintf(fp ,"%x\n", env->CP0_EPC);
-            printf("user pc:%x, stack:%x,  qemu pid:%x\n", env->active_tc.PC, stack, getpid());
+            
 #elif defined(TARGET_ARM)
             for(int i=0;i<16;i++) {
                 fprintf(fp, "%x\n", env->regs[i]);
@@ -2221,7 +2241,7 @@ int start_fork(CPUState *cpu, target_ulong pc)
 
 }
 
-
+#ifdef FUZZ
 int feed_input_helper(CPUState *cpu, target_ulong pc)
 {
     if(start_fork_pc != 0 && pc == start_fork_pc && feed_times == 0)
@@ -2251,43 +2271,6 @@ int feed_input_helper(CPUState *cpu, target_ulong pc)
         }
     }
     return 0;
-}
-
-void handle_accept_after(CPUState *cpu, target_ulong pc)
-{
-    CPUArchState *env = cpu->env_ptr;
-#ifdef TARGET_ARM
-    int exception_num = 2;
-    int accept_syscall = 285;
-    target_ulong ret = env->regs[0];
-#elif defined(TARGET_MIPS)
-    int exception_num = 17;
-    int accept_syscall = 4168;
-    target_ulong ret = env->active_tc.gpr[2];
-#endif
-    if(config_pc==0)
-    {
-        if(start_fork_pc == 0 && pc < 0x80000000 && into_syscall == accept_syscall) // after accept
-        {
-            target_ulong pgd = DECAF_getPGD(cpu);
-            if(pgd == httpd_pgd) {
-
-                printf("handle_accept_after\n");
-                if(into_syscall == accept_syscall)
-                {
-                    accept_times++;
-                    printf("_______{fd:%d\n", ret);
-                    if(accept_times == fork_accept_times)
-                    {
-                        accept_fd = ret;
-                        printf("_________accept fd:%d\n", accept_fd);
-                    } 
-                }
-                into_syscall = 0;
-            }
-        }
-
-    }
 }
 
 int feed_input_times = 0;
@@ -2361,6 +2344,48 @@ int feed_input_to_program(int program_id, CPUState *cpu) //before recv
     }
     return 0;
 }
+
+#endif
+
+void handle_accept_after(CPUState *cpu, target_ulong pc)
+{
+    CPUArchState *env = cpu->env_ptr;
+#ifdef TARGET_ARM
+    int exception_num = 2;
+    int accept_syscall = 285;
+    target_ulong ret = env->regs[0];
+#elif defined(TARGET_MIPS)
+    int exception_num = 17;
+    int accept_syscall = 4168;
+    target_ulong ret = env->active_tc.gpr[2];
+#endif
+    if(config_pc==0)
+    {
+        if(start_fork_pc == 0 && pc < kernel_base && into_syscall == accept_syscall) // after accept
+        {
+            target_ulong pgd = DECAF_getPGD(cpu);
+            if(pgd == httpd_pgd) {
+
+                printf("handle_accept_after\n");
+                if(into_syscall == accept_syscall)
+                {
+                    accept_times++;
+                    printf("_______{fd:%d\n", ret);
+                    if(accept_times == fork_accept_times)
+                    {
+                        accept_fd = ret;
+                        printf("_________accept fd:%d\n", accept_fd);
+                    } 
+                }
+                into_syscall = 0;
+            }
+        }
+
+    }
+}
+
+
+
 /* main execution loop */
 int cpu_exec(CPUState *cpu)
 {
@@ -2584,7 +2609,6 @@ exit:
 
     } 
 
-
     /* if an exception is pending, we execute it here */
     while (!cpu_handle_exception(cpu, &ret)) {
         TranslationBlock *last_tb = NULL;
@@ -2618,27 +2642,35 @@ skip_to_pos:
 
             if(afl_user_fork && handle_addr !=0) //normal execution
             {
-                if(pc < 0x80000000)
+                target_ulong tmp_pgd = DECAF_getPGD(cpu);
+                if(pc < kernel_base && tmp_pgd == httpd_pgd)
                 {
                     int ind =  (handle_addr >> 12) & 255;
+#ifdef TARGET_MIPS
                     target_ulong addr_code = env->tlb_table[2][ind].addr_code;
                     target_ulong addr_read = env->tlb_table[2][ind].addr_read;
                     target_ulong addr_write = env->tlb_table[2][ind].addr_write;
                     uintptr_t addend = env->tlb_table[2][ind].addend;
+#elif defined(TARGET_ARM)
+                    target_ulong addr_code = env->tlb_table[0][ind].addr_code;
+                    target_ulong addr_read = env->tlb_table[0][ind].addr_read;
+                    target_ulong addr_write = env->tlb_table[0][ind].addr_write;
+                    uintptr_t addend = env->tlb_table[0][ind].addend;
+#endif
                     DECAF_printf("pc is:%x, into normal execution:%x, %x,%x,%x, %lx\n",pc, handle_addr, addr_code, addr_read, addr_write,addend);        
 
-                    if((handle_addr & 0xfffff000) == addr_write)
+                    if(((handle_addr & 0xfffff000) == addr_write && handle_addr_prot == 1)
+                        || ((handle_addr & 0xfffff000) == addr_read && handle_addr_prot == 0))
                     {
                         into_normal_execution = 0;
                         tcg_handle_addr = 1;
-                        printf("before qemu_ram_addr_from_host:%x\n", addr_write + addend);
-                        target_ulong final_phys_addr = qemu_ram_addr_from_host(addr_write + addend);
-                        printf("before write addr:%x,%x\n", handle_addr, final_phys_addr + (handle_addr & 0xfff));
+                        target_ulong final_phys_addr = qemu_ram_addr_from_host(handle_addr + addend);
+
                         //write_addr(ask_addr, res_addr);
                         ask_addr = handle_addr;
-                        res_addr = final_phys_addr + (handle_addr & 0xfff);
+                        res_addr = final_phys_addr;
                         //write_addr(handle_addr, final_phys_addr + (handle_addr & 0xfff));
-                        printf("after write addr:%x,%x\n", handle_addr, final_phys_addr + (handle_addr & 0xfff));
+                        printf("write addr:%x,phys_addr:%x\n\n", handle_addr, final_phys_addr);
                         exit_status = 0;
                         afl_wants_cpu_to_stop = 1;
                         handle_addr = 0;
@@ -2795,8 +2827,10 @@ skip_to_pos:
                 //goto end;
 #endif
             }
+
             TranslationBlock *tb = tb_find(cpu, last_tb, tb_exit);
             cpu_loop_exec_tb(cpu, tb, &last_tb, &tb_exit);
+
             /* Try to align the host and virtual clocks
                if the guest is in advance */
         }
@@ -3029,7 +3063,7 @@ int read_content(int pipe_fd, char *buf, int total_len)
 
 }
 
-int read_state(CPUArchState * env, MISSING_PAGE *page, target_ulong *addr)  
+int read_state(CPUArchState * env, MISSING_PAGE *page, target_ulong *addr, int * addr_prot)  
 {   
      int type;
      char buf[1024]; 
@@ -3074,7 +3108,9 @@ int read_state(CPUArchState * env, MISSING_PAGE *page, target_ulong *addr)
                 res = read_content(pipe_read_fd, &cpustate, sizeof(CPUSHSTATE));
                 loadCPUShState(&cpustate, env, addr);
                 res = read_content(pipe_read_fd, addr, sizeof(target_ulong));
+                res = read_content(pipe_read_fd, addr_prot, sizeof(int));
                 //printf("read state ok:%x\n", env->active_tc.PC);
+                //printf("read state addr:%x\n", *addr);
                 read_type = -1; 
                 return 1;
             }
@@ -3329,12 +3365,9 @@ void *qemu_handle_addr_thread_fn(void *arg)
     cpu->exception_index = -1;
     int ret = mips_cpu_handle_mmu_fault(cpu, addr, access_type, mmu_idx);
     int index = (addr >> 12) & (256 - 1);
-#ifdef TARGET_MIPS
+
     target_ulong orig_pc = env->active_tc.PC;
-#elif defined TARGET_ARM 
-    target_ulong orig_pc = env->regs[15];
-#endif
-    
+
     void *t = env->tlb_table[mmu_idx][index].addend;
     if (qemu_mutex_iothread_locked()) {
         qemu_mutex_unlock_iothread();
@@ -3357,12 +3390,8 @@ void *qemu_handle_addr_thread_fn(void *arg)
                 TranslationBlock *last_tb = NULL;
                 int tb_exit = 0; 
                 while (!cpu_handle_interrupt(cpu, &last_tb)) {
-#ifdef TARGET_MIPS
                     target_ulong cur_pc = env->active_tc.PC;
-#elif defined(TARGET_ARM) 
-                    target_ulong cur_pc = env->regs[15];
-#endif                   
-                     if(cur_pc < 0x80000000) {   
+                    if(cur_pc < kernel_base) {   
                         if(orig_pc == cur_pc)
                         {
                             goto label;
@@ -3392,7 +3421,7 @@ label:
         ret = mips_cpu_handle_mmu_fault(cpu, addr, access_type, mmu_idx);
         t = env->tlb_table[mmu_idx][index].addend;
     }
-    res_addr = ((uintptr_t)addr + t);
+    res_addr = qemu_ram_addr_from_host((uintptr_t)addr + t);
     return;
 fail:
     res_addr = 0;
@@ -3420,12 +3449,8 @@ void *qemu_handle_addr_thread_fn(void *arg)
     ARMMMUFaultInfo fi = {};
     int ret = tlb_fill_helper(cpu, addr, access_type, mmu_idx);
     int index = (addr >> 12) & (256 - 1);
-#ifdef TARGET_MIPS
-    target_ulong orig_pc = env->active_tc.PC;
-#elif defined TARGET_ARM 
     target_ulong orig_pc = env->regs[15];
-#endif
-    
+
     void *t = env->tlb_table[mmu_idx][index].addend;
     if (qemu_mutex_iothread_locked()) {
         qemu_mutex_unlock_iothread();
@@ -3448,12 +3473,8 @@ void *qemu_handle_addr_thread_fn(void *arg)
                 TranslationBlock *last_tb = NULL;
                 int tb_exit = 0; 
                 while (!cpu_handle_interrupt(cpu, &last_tb)) {
-#ifdef TARGET_MIPS
-                    target_ulong cur_pc = env->active_tc.PC;
-#elif defined TARGET_ARM 
-                    target_ulong cur_pc = env->regs[15];
-#endif                   
-                     if(cur_pc < 0x80000000) {   
+                    target_ulong cur_pc = env->regs[15];                  
+                     if(cur_pc < kernel_base) {   
                         if(orig_pc == cur_pc)
                         {
                             goto label;
@@ -3507,7 +3528,7 @@ void handlePiperead(void *ctx)
     CPUArchState *env = restart_cpu->env_ptr;
     MISSING_PAGE page;
 
-    int res = read_state(env, &page, &handle_addr);
+    int res = read_state(env, &page, &handle_addr, &handle_addr_prot);
     //printf("********read error addr:%x, %d\n", handle_addr, res);
 
     
@@ -3528,7 +3549,7 @@ void handlePiperead(void *ctx)
         restart();
     }
     else if(res == 1){
-
+        printf("handle_addr:%x,%d\n", handle_addr, handle_addr_prot);
         restart();
 
     }

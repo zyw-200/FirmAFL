@@ -17,7 +17,7 @@ typedef struct
 
 #ifdef LMBENCH
 
-define MAPPING_WITHOUT_FUZZ
+#define MAPPING_WITHOUT_FUZZ
 #define MEM_MAPPING
 #define PRE_MAPPING 
 
@@ -29,7 +29,7 @@ define MAPPING_WITHOUT_FUZZ
 #define MEM_MAPPING
 #define NEW_MAPPING
 #define SNAPSHOT_SYNC
-#define PRE_MAPPING //comment out if choose NEW_MAPPING
+#define PRE_MAPPING //comment out if choose NEW_MAPPING ; only for mips
 #define STORE_PAGE_FUNC
 //#define PADDR_MAP_CHECK
 #define FEED_INPUT //FEED_ENV or FEED_HTTP
