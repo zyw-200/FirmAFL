@@ -65,7 +65,7 @@ IMAGE="./image.raw"
 MEM_FILE="./mem_file"
 
 
-AFL="./afl-fuzz-full -m none -t 800000+  -i ./inputs -o ./outputs_full -x keywords_10853 -QQ --"
+AFL="./afl-fuzz-full -m none -t 800000+  -i ./inputs -o ./outputs_full -x keywords -QQ --"
 
 #gdb -q --args \
 ${AFL} \

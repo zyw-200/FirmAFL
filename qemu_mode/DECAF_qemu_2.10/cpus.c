@@ -1612,7 +1612,6 @@ static void *qemu_tcg_cpu_thread_fn(void *arg)
                     e->regs[15] = 0;
 #endif
                 }
-                //printf("write state*********;%x\n", e->active_tc.PC);
                 write_state(e);
             }    
             restart_cpu = first_cpu;
@@ -1620,15 +1619,6 @@ static void *qemu_tcg_cpu_thread_fn(void *arg)
         }
         atomic_mb_set(&cpu->exit_request, 0);
         qemu_tcg_wait_io_event(cpu ? cpu : QTAILQ_FIRST(&cpus));
-        //if(afl_user_fork) DECAF_printf("after qemu_tcg_wait_io_event\n");
-    
-        /*
-        if(!syscall_request)
-        {
-            qemu_tcg_wait_io_event(cpu ? cpu : QTAILQ_FIRST(&cpus));
-        }
-        syscall_request=0;
-        */
     }
     return NULL;
 }

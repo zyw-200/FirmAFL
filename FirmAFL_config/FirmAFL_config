@@ -1,7 +1,0 @@
-mapping_filename=/home/zyw/experiment/FirmAFL/image_105600/mapping_table
-init_read_pipename=/home/zyw/experiment/FirmAFL/image_105600/user_cpu_state
-write_pipename=/home/zyw/experiment/FirmAFL/image_105600/full_cpu_state
-program_analysis=httpd
-feed_type=FEED_HTTP
-id=105600
-opti=yes

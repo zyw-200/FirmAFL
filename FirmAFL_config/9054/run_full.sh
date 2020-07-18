@@ -62,7 +62,7 @@ sleep 1s
 QEMU="./qemu-system-${ARCH}-full"
 KERNEL="./vmlinux.${ARCH}_3.2.1" 
 IMAGE="./image.raw"
-AFL="./afl-fuzz-full -m none -t 800000+  -i ./inputs -o ./outputs_full -x keywords_9054 -QQ --"
+AFL="./afl-fuzz-full -m none -t 800000+  -i ./inputs -o ./outputs_full -x keywords -QQ --"
 
 ${AFL} \
  ${QEMU} -m 256 -M ${QEMU_MACHINE} -kernel ${KERNEL} \

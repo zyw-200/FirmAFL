@@ -1,6 +1,0 @@
-mapping_filename=/home/zyw/image/mapping_table
-init_read_pipename=/home/zyw/image/user_cpu_state
-write_pipename=/home/zyw/image/full_cpu_state
-mapping_filename=/home/zyw/experiment/FirmAFL/image_9050/mapping_table
-init_read_pipename=/home/zyw/experiment/FirmAFL/image_9050/user_cpu_state
-write_pipename=/home/zyw/experiment/FirmAFL/image_9050/full_cpu_state

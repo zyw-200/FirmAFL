@@ -64,8 +64,8 @@ KERNEL="./vmlinux.${ARCH}_3.2.1"
 IMAGE="./image.raw"
 MEM_FILE="./mem_file"
 
-#AFL="./afl-fuzz -m none -t 800000+  -i ./inputs -o ./outputs -x http_keywords $1 $2 -QQ -- "
-AFL="./afl-fuzz-full -m none -t 800000+  -i ./inputs -o ./outputs_full -x keywords_9925 -QQ -- "
+
+AFL="./afl-fuzz-full -m none -t 800000+  -i ./inputs -o ./outputs_full -x keywords -QQ -- "
 ${AFL} \
  ${QEMU} -m 256 -M ${QEMU_MACHINE} -kernel ${KERNEL} \
     -drive if=ide,format=raw,file=${IMAGE} -append "root=${QEMU_ROOTFS} console=ttyS0 nandsim.parts=64,64,64,64,64,64,64,64,64,64 rdinit=/firmadyne/preInit.sh rw debug ignore_loglevel print-fatal-signals=1 user_debug=31 firmadyne.syscall=0" \

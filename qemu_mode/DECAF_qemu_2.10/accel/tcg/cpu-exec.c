@@ -29,7 +29,6 @@ int libuclibc_addr = 0;
 int not_exit = 0;
 int tmp_not_exit = 0;
 int last_pc = 0;
-int last_program_pc = 0;
 int end_pc = 0;
 int program_id = 0;
 int auto_find_fork_times = 0;
@@ -827,7 +826,8 @@ static void fuzz_mem_write(DECAF_Callback_Params *dcp)
         { 
             DECAF_printf("cross page:%lx, len:%d\n\n\n\n\n", virt_addr, dl);
             next_page = (virt_addr & 0xfffff000) + 0x1000;
-            //exit(32);
+            sleep(100);
+            exit(32);
             
         } 
 // memory consistence
@@ -1893,6 +1893,7 @@ int record_current_state(CPUState *cpu)
     before_syscall_stack = env->active_tc.gpr[29];
     curr_state_pc = env->active_tc.PC;
     into_syscall = env->active_tc.gpr[2];
+    printf("into_syscall:%d,%lx,%lx\n", into_syscall, curr_state_pc, before_syscall_stack);
 #elif defined(TARGET_ARM)
     before_syscall_stack = env->regs[13];
     curr_state_pc = env->regs[15];
@@ -2222,15 +2223,17 @@ int start_fork(CPUState *cpu, target_ulong pc)
 #endif  //MEM_MAPPING
 
 #if defined(FUZZ) && !defined(MEM_MAPPING)
+#ifdef TARGET_MIPS
             startTrace(cpu, 0, 0x7fffffff);
-            //startTrace(cpu, 0, 0x70000000);
+#elif defined(TARGET_ARM)
+            startTrace(cpu, 0, 0xbfffffff);
 #endif
-            ///*
+            afl_user_fork = 1;
+#endif
             //exit_status = 0;
             afl_wants_cpu_to_stop = 1;
-            //afl_user_fork = 1;
             return 1; //goto end;   
-            //*/
+
 #ifdef DECAF           
         }           
 #endif
@@ -2249,7 +2252,7 @@ int feed_input_helper(CPUState *cpu, target_ulong pc)
 
         target_ulong pgd = DECAF_getPGD(cpu);
         if(pgd == httpd_pgd) {
-            printf("feed_input_helper\n");
+            //printf("feed_input_helper\n");
             int res = feed_input(cpu);
             feed_times = 1;
             if(res == 2){ 
@@ -2524,33 +2527,7 @@ int cpu_exec(CPUState *cpu)
 #endif
             //global_into_syscall = 1;
 
-//??????
-            /*
-            if(print_debug)
-            {   
-                sys_count++;
-                DECAF_printf("----------------------------------------------------------%d\n", sys_count);
-                DECAF_printf("sys num:%d, pc: %x, stack:%x, %x, %x, %x ,interrupt:%d\n", into_syscall, curr_state_pc, before_syscall_stack, a0, a1, a2, cpu->interrupt_request);
-                if(into_syscall == 4005 || into_syscall == 4040 || into_syscall == 4010 )
-                {
-                    char prog_name[100];
-                    DECAF_read_mem(cpu, a0, 100, prog_name);
-                    DECAF_printf("open:%s, %x\n", prog_name, a0);
-                }
-                if(into_syscall == 4175)
-                {
-                    DECAF_printf("last pc:%x\n", last_program_pc);
-                }
-                if(into_syscall == 4142)
-                {
-                    DECAF_printf("last pc:%x\n", last_program_pc);
-                }
-                if(into_syscall == 4011)
-                {
-                    DECAF_printf("last pc:%x\n", last_program_pc);
-                }
-            }
-            */
+
             record_current_state(cpu);
 
             int if_exit = determine_if_end(program_id);
@@ -2623,7 +2600,6 @@ skip_to_pos:
             target_ulong a1 =env->active_tc.gpr[5];
             target_ulong a2 = env->active_tc.gpr[6];
             target_ulong ra = env->active_tc.gpr[31];
-            target_ulong ret = env->active_tc.gpr[2];
             target_ulong err = env->active_tc.gpr[7];
             target_ulong stack = env->active_tc.gpr[29];
 #elif defined(TARGET_ARM)
@@ -2632,7 +2608,6 @@ skip_to_pos:
             target_ulong a1 = env->regs[1];
             target_ulong a2 = env->regs[2];
             target_ulong ra = env->regs[14];
-            target_ulong ret = env->regs[0];
             target_ulong err = 0; //???
             target_ulong stack = env->regs[13]; //???????
 
@@ -2674,6 +2649,7 @@ skip_to_pos:
                         exit_status = 0;
                         afl_wants_cpu_to_stop = 1;
                         handle_addr = 0;
+                        ret = 0;
                         goto end;   
                     }
                 } 
@@ -2711,9 +2687,8 @@ skip_to_pos:
                 target_ulong new_pgd = DECAF_getPGD(cpu);
                 if(new_pgd == httpd_pgd){ //user_stack_count // || get_current_pc()  == 0xb960 + tmp_libuclibc_addr
 #endif
-
-#ifdef TARGET_ARM
                     printf("syscall end:%d\n", into_syscall);
+#ifdef TARGET_ARM
                     if(into_syscall == 3)
                     {
                         char buf[100];
@@ -2749,6 +2724,7 @@ skip_to_pos:
                     //if(!not_exit && !tmp_not_exit) //4194 4114
                     if(!not_exit) //4194 4114
                     {
+                        ret = 0; //important
                         afl_wants_cpu_to_stop = 1; // BEFORE WRITE STATE
                         goto end;
                     }
@@ -2815,8 +2791,6 @@ skip_to_pos:
 #endif
 
             if(afl_user_fork) last_pc = pc;
-            if(pc < 0x70000000) last_program_pc = pc;
-
 
             if(afl_user_fork && pc == 0x80133a84)
             {
@@ -3208,7 +3182,8 @@ int read_state(CPUArchState * env, MISSING_PAGE *page, target_ulong *addr, int *
                 else
                 {
                     printf("one loop not over, cmd:%x, is_loop_over:%d\n", cmd, is_loop_over);
-                    //exit(32);
+                    sleep(100);
+                    exit(32);
                 }
                 read_type = -1;
                 return 2;
@@ -3217,6 +3192,7 @@ int read_state(CPUArchState * env, MISSING_PAGE *page, target_ulong *addr, int *
             {
                 printf("############error############ cmd is:%x\n", read_type);
                 read_type = -1;
+                sleep(100);
                 exit(32);
             }
         }
@@ -3296,7 +3272,7 @@ int write_addr(uintptr_t ori_addr, uintptr_t addr)
             printf("Write addr error on pipe\n");  
             exit(EXIT_FAILURE);  
         }  
-        //printf("write addr ok:%lx, %lx\n",ori_addr, addr);
+        printf("write addr ok:%lx, %lx\n",ori_addr, addr);
     }  
     else{
         printf("write addr failure\n");  
@@ -3549,7 +3525,11 @@ void handlePiperead(void *ctx)
         restart();
     }
     else if(res == 1){
-        printf("handle_addr:%x,%d\n", handle_addr, handle_addr_prot);
+#ifdef TARGET_MIPS
+        printf("handle_addr:%x,%d, state:%x\n", handle_addr, handle_addr_prot, env->active_tc.PC);
+#elif defined(TARGET_ARM)
+        printf("handle_addr:%x,%d, state:%x\n", handle_addr, handle_addr_prot, env->regs[15]);
+#endif        
         restart();
 
     }
