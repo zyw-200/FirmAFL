@@ -229,25 +229,33 @@ int if_standard_io(int fd)
     return 0;
 }
 
+int syscall_addr_check_flag = -1;
 void syscall_addr_check(int addr, int len, int syscall)
-{
+{   
     for(int page = addr & 0xfffff000; page <= ((addr +len) & 0xfffff000); page+=0x1000)
     {
+
         //printf("check page:%x\n", page);
         uintptr_t *host_addr = g2h(page);
-        if(syscall == 3)
+        if(syscall == 3) //read
         {
-            uintptr_t a = *host_addr;
+
+            syscall_addr_check_flag = 1; // write memory
+        	*host_addr = 0;
         }
-        else if(syscall == 4)
+        else if(syscall == 4) //write
         {
-            *host_addr = 0;
+            syscall_addr_check_flag = 0;  // read memory
+            uintptr_t a = *host_addr;
+            
         }
         else
         {
-            uintptr_t a = *host_addr;
+            syscall_addr_check_flag = 0;  // read memory
+            uintptr_t a = *host_addr; //read memory
         }
     }
+    syscall_addr_check_flag = -1;
 }
 
 
@@ -538,7 +546,7 @@ void get_input(CPUState * cpu)
         //write_ptr(cpu, environ_addr + 4, 0); //important
 
         printf("input_buf:%s, len:%d\n", input_buf,get_len);
-        printf("content:%s\n\n\n", g2h(content_addr));
+        //printf("content:%s\n\n\n", g2h(content_addr));
 
     }
     else if(strcmp(feed_type, "FEED_HTTP") == 0)
@@ -861,10 +869,6 @@ void normal_exit(int syscall_num)
     printf("exit syscall:%d\n\n\n\n\n\n", syscall_num);
     //write_aflcmd(cmd, &user_mode_time);
     write_aflcmd_complete(cmd, &user_mode_time);
-    if(print_debug)
-    {
-        printf("exit syscall:%d\n\n\n\n\n\n", syscall_num);
-    }
 
     exit(0);
 }
@@ -3591,6 +3595,7 @@ void cpu_loop(CPUMIPSState *env)
                                      env->active_tc.gpr[6],
                                      env->active_tc.gpr[7],
                                      arg5, arg6, arg7, arg8);
+                    //printf("do syscall end %d, args: %x,%x,%x,%x ret:%d\n",env->active_tc.gpr[2], env->active_tc.gpr[4], env->active_tc.gpr[5], env->active_tc.gpr[6], env->active_tc.gpr[7], ret);
                     
                     
 
@@ -6803,12 +6808,26 @@ static void handler(int sig_num, siginfo_t *si, void *ptr)
         pthread_mutex_lock(p_mutex_shared);
 
         //printf("cur pc:%x, %x, %x, %d\n", cur_guest_pc, env->active_tc.PC, error_addr, prot);
+
+        if(syscall_addr_check_flag !=-1)
+        {
+            printf("syscall addr check on read or write\n");
+            MISSING_PAGE page;
+            page.prot = syscall_addr_check_flag;
+            page.addr = error_addr;
+            page.mmu_idx = 2;
+            write_addr(&page);
+        }
+        else
+        {
 #ifdef TARGET_MIPS
-        env->active_tc.PC = cur_guest_pc;
+            env->active_tc.PC = cur_guest_pc;
 #elif defined(TARGET_ARM)
-        env->regs[15] = cur_guest_pc;
+            env->regs[15] = cur_guest_pc;
 #endif
-        write_state(env, error_addr, prot);
+            write_state(env, error_addr, prot);
+
+        }
         uintptr_t phys_addr;
         read_addr(error_addr, &phys_addr);
         if(phys_addr == 0xffffffff)

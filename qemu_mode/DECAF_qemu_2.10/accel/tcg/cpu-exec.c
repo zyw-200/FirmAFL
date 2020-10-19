@@ -2695,9 +2695,10 @@ skip_to_pos:
                         goto end;   
                     }
                 }
+                //kernel mipsel 3.2.1 , mipseb 3.2.1
                 if(pc == 0x80133a84 || pc == 0x80133ac4)
                 {
-                    printf("error addr:%x\n", handle_addr);
+                    printf("into kernel error addr:%x\n", handle_addr);
                     into_normal_execution = 0;
                     tcg_handle_addr = 1;
                     ask_addr = handle_addr;
@@ -3568,6 +3569,8 @@ label:
         ret = mips_cpu_handle_mmu_fault(cpu, addr, access_type, mmu_idx);
         t = env->tlb_table[mmu_idx][index].addend;
     }
+    //printf("qemu_handle_addr_thread_fn access type:%d\n", access_type);
+    record_tlb_ind(index, access_type);
     res_addr = qemu_ram_addr_from_host((uintptr_t)addr + t);
     return;
 fail:

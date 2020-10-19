@@ -434,6 +434,7 @@ target_ulong record_write_tlb[256];
 int read_index = 0;
 int write_index = 0;
 
+//qemu_handle_addr_thread_fn may calls it.
 void record_tlb_ind(int ind, int flag) // not index
 {
 	if (flag == 0)
@@ -444,6 +445,10 @@ void record_tlb_ind(int ind, int flag) // not index
 	else if(flag == 1)
 	{
 		record_write_tlb[write_index++] = ind;
+	}
+	else
+	{
+		record_read_tlb[read_index++] = ind;
 	}
 }
 

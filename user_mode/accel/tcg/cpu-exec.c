@@ -839,7 +839,7 @@ int cpu_exec(CPUState *cpu)
                 gettimeofday(&lmbench_start, NULL);
             }
 #endif //lmbench
-           
+
             TranslationBlock *tb = tb_find(cpu, last_tb, tb_exit);
             cpu_loop_exec_tb(cpu, tb, &last_tb, &tb_exit);
             /* Try to align the host and virtual clocks
