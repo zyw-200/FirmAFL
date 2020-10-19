@@ -255,7 +255,6 @@ void syscall_addr_check(int addr, int len, int syscall)
             uintptr_t a = *host_addr; //read memory
         }
     }
-    syscall_addr_check_flag = -1;
 }
 
 
@@ -6817,6 +6816,8 @@ static void handler(int sig_num, siginfo_t *si, void *ptr)
             page.addr = error_addr;
             page.mmu_idx = 2;
             write_addr(&page);
+            syscall_addr_check_flag = -1;
+
         }
         else
         {
