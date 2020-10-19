@@ -429,6 +429,41 @@ void reload_tlb(CPUMIPSState * env)
 }
 #endif
 
+target_ulong record_read_tlb[256];
+target_ulong record_write_tlb[256];
+int read_index = 0;
+int write_index = 0;
+
+void record_tlb_ind(int ind, int flag) // not index
+{
+	if (flag == 0)
+	{
+		record_read_tlb[read_index++] = ind;
+
+	}
+	else if(flag == 1)
+	{
+		record_write_tlb[write_index++] = ind;
+	}
+}
+
+void recover_tlb(CPUArchState *env)
+{
+	for(int i = 0; i < read_index ; i++)
+	{
+		int ind = record_read_tlb[i];
+		env->tlb_table[2][ind].addr_read = 0xffffffff;
+	}
+	for(int j = 0; j < write_index ; j++)
+	{
+		int ind = record_write_tlb[j];
+		env->tlb_table[2][ind].addr_write = 0xffffffff;
+	}
+	read_index = 0;
+	write_index = 0;
+}
+
+
 CPUArchState backup_cpu;
 CPUState backup_cpu0;
 CPUTLBEntry backup_tlb_table[4][256];

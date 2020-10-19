@@ -507,7 +507,7 @@ static void new_proc_callback(DECAF_Callback_Params* params)
     CPUState *env = params->bb.env;
     target_ulong pc = DECAF_getPC(env);
 
-    if(OFFSET_PROFILE.proc_exec_connector != pc)
+    if(OFFSET_PROFILE.proc_exec_connector != pc &&OFFSET_PROFILE.proc_fork_connector != pc)
         return;
 
     traverse_task_struct_add(env);

@@ -9,6 +9,7 @@
 #define AUTO_FIND_FORK_PC //pc need change
 #define MAX_LEN 3000
 //#define DEBUG
+//#define SHOW_SYSCALL_TRACE
 #else 
 
 

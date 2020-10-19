@@ -6811,7 +6811,13 @@ static void handler(int sig_num, siginfo_t *si, void *ptr)
         write_state(env, error_addr, prot);
         uintptr_t phys_addr;
         read_addr(error_addr, &phys_addr);
-
+        if(phys_addr == 0xffffffff)
+        {
+            pthread_mutex_unlock(p_mutex_shared);
+            cross_shamem_disconn(); //ZYW 
+            //printf("bug exit\n");
+            bug_exit(error_addr);
+        }
         if(phys_addr == 0)
         {
             printf("new_mapping handle addr error:%x\n",error_addr);
@@ -6836,7 +6842,7 @@ static void handler(int sig_num, siginfo_t *si, void *ptr)
         
             //read_addr(&phys_addr);
         //}
-        
+        	
         //read_state(env->active_tc.PC, env);
         pthread_mutex_unlock(p_mutex_shared);
         cross_shamem_disconn(); //ZYW 

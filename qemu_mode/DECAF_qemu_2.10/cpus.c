@@ -2153,6 +2153,10 @@ void fork_test()
     }
 }
 
+#ifdef SHOW_SYSCALL_TRACE
+extern FILE * sys_trace_fp;
+#endif
+
 //extern void cpu_mips_irq_request(void *opaque, int irq, int level);
 extern int afl_user_fork;
 extern struct timeval tmp_begin;
@@ -2185,6 +2189,14 @@ gotPipeNotification(void *ctx)
         cpu_enable_ticks();
         qemu_tcg_init_vcpu(restart_cpu); //zyw
         qemu_account_warp_timer();
+#ifdef SHOW_SYSCALL_TRACE
+        int file_exist = access("syscall_trace_full", F_OK);
+        if(file_exist != 0)
+        {
+            sys_trace_fp = fopen("syscall_trace_full", "a+");    
+        }
+#endif
+
 #else
        //normal_forkserver(env);
         afl_noforkserver(env);

@@ -101,7 +101,7 @@ int print_loop_times = 1;
 int print_loop_count = 0;
 
 
-int httpd_pgd;
+int target_pgd;
 int afl_user_fork = 0;
 
 
@@ -109,5 +109,6 @@ int slow_print = 0;
 int finish_recv = 0;
 int global_into_syscall;
 int into_syscall = 0;
-int last_syscall = 0;
+int before_syscall_stack = 0;
 int curr_state_pc = 0;
+int last_syscall = 0;
