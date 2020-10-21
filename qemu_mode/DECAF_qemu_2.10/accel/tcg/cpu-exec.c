@@ -3567,15 +3567,19 @@ void *qemu_handle_addr_thread_fn(void *arg)
                     }
                     if(cur_pc == 0x80133a84 || cur_pc == 0x80133ac4)
 	                {
-	                    printf("into kernel error addr:%x\n", handle_addr);
-	                    into_normal_execution = 0;
-	                    tcg_handle_addr = 1;
-	                    ask_addr = handle_addr;
-	                    exit_status = 0;
-	                    afl_wants_cpu_to_stop = 1;
-	                    handle_addr = 0;
-	                    ret = 0;
-	                    goto fail;   
+	                	target_ulong pgd = DECAF_getPGD(cpu);
+                        if(pgd == target_pgd)
+                        {
+		                    printf("into kernel error addr:%x\n", handle_addr);
+		                    into_normal_execution = 0;
+		                    tcg_handle_addr = 1;
+		                    ask_addr = handle_addr;
+		                    exit_status = 0;
+		                    afl_wants_cpu_to_stop = 1;
+		                    handle_addr = 0;
+		                    ret = 0;
+		                    goto fail;
+		                }   
 	                } 
                     TranslationBlock *tb = tb_find(cpu, last_tb, tb_exit); 
                     cpu_loop_exec_tb(cpu, tb, &last_tb, &tb_exit);
