@@ -612,7 +612,6 @@ abi_long feed_input(int syscall_num, CPUArchState *env, int *network_handle)
             target_ulong a2 = env->active_tc.gpr[6];
             target_ulong a3 = env->active_tc.gpr[7];
             target_ulong ra = env->active_tc.gpr[31];
-            target_ulong ret = env->active_tc.gpr[2];
 
 #elif defined(TARGET_ARM)
             target_ulong pc = env->regs[15];
@@ -621,7 +620,6 @@ abi_long feed_input(int syscall_num, CPUArchState *env, int *network_handle)
             target_ulong a2 = env->regs[2];
             target_ulong a3 = env->regs[3];
             target_ulong ra = env->regs[14];
-            target_ulong ret = env->regs[0];
 #endif
         if((syscall_num == 175  || syscall_num == 3 || syscall_num == 176) && (a0 == accept_fd) && feed_input_times == 0)
         {

@@ -699,6 +699,7 @@ int mem_mapping_exit = 0;
 
 static void do_block_begin(DECAF_Callback_Params* param)
 {
+
     CPUState *cpu = param->bb.env;
     CPUArchState *env = cpu->env_ptr;
     target_ulong pc = param->bb.tb->pc;
@@ -707,6 +708,8 @@ static void do_block_begin(DECAF_Callback_Params* param)
 #elif defined(TARGET_ARM)
     target_ulong ra = 0;
 #endif
+
+#ifdef FUZZ
     if(afl_user_fork && (pc == 0x80133a84 || pc == 0x80133ac4))
     {
         DECAF_printf("print_fatal_signal:%x\n",pc);
@@ -715,6 +718,7 @@ static void do_block_begin(DECAF_Callback_Params* param)
         doneWork(ret_value);
         //goto end;
 #endif
+/*
 #ifdef MEM_MAPPING
         target_ulong pgd = DECAF_getPGD(cpu);
         if(pgd == target_pgd)
@@ -722,7 +726,10 @@ static void do_block_begin(DECAF_Callback_Params* param)
             mem_mapping_exit = 1;
         }
 #endif
+*/
     }
+#endif
+
 #ifdef STORE_PAGE_FUNC
 #ifdef SNAPSHOT_SYNC
     if(afl_user_fork)
@@ -739,7 +746,6 @@ static void do_block_begin(DECAF_Callback_Params* param)
     }
 #endif
 #endif
-
     return;
 }
 
@@ -2666,10 +2672,14 @@ skip_to_pos:
                     uintptr_t addend = env->tlb_table[0][ind].addend;
 #endif
                     DECAF_printf("pc is:%x, into normal execution:%x, %x,%x,%x, %lx\n",pc, handle_addr, addr_code, addr_read, addr_write,addend);        
-
+                    if(!find_tlb_backup(ind))
+					{
+						record_tlb(ind, addr_code, addr_read, addr_write, addend);
+					}
                     if(((handle_addr & 0xfffff000) == addr_write && handle_addr_prot == 1)
                         || ((handle_addr & 0xfffff000) == addr_read && handle_addr_prot == 0))
                     {
+                    	/*
                     	if(handle_addr_prot == 1)
                         {
                             record_tlb_ind(ind, 1);
@@ -2678,7 +2688,7 @@ skip_to_pos:
                         {
                             record_tlb_ind(ind, 0);
                         }
-
+						*/
                         into_normal_execution = 0;
                         tcg_handle_addr = 1;
                         target_ulong final_phys_addr = qemu_ram_addr_from_host(handle_addr + addend);
@@ -3512,12 +3522,21 @@ void *qemu_handle_addr_thread_fn(void *arg)
     init_delay_params(&sc, cpu);
     cpu->interrupt_request = 0;// need???????????????
     cpu->exception_index = -1;
-    int ret = mips_cpu_handle_mmu_fault(cpu, addr, access_type, mmu_idx);
-    int index = (addr >> 12) & (256 - 1);
 
+    int index = (addr >> 12) & (256 - 1);
+    target_ulong addr_code = env->tlb_table[mmu_idx][index].addr_code;
+    target_ulong addr_read = env->tlb_table[mmu_idx][index].addr_code;
+    target_ulong addr_write = env->tlb_table[mmu_idx][index].addr_code;
+    uintptr_t t = env->tlb_table[mmu_idx][index].addend;
+    if(afl_user_fork && !find_tlb_backup(index))
+    {
+    	record_tlb(index, addr_code, addr_read, addr_write, t);
+    }
+
+    int ret = mips_cpu_handle_mmu_fault(cpu, addr, access_type, mmu_idx);
+    t = env->tlb_table[mmu_idx][index].addend;
     target_ulong orig_pc = env->active_tc.PC;
 
-    void *t = env->tlb_table[mmu_idx][index].addend;
     if (qemu_mutex_iothread_locked()) {
         qemu_mutex_unlock_iothread();
     }
@@ -3546,8 +3565,23 @@ void *qemu_handle_addr_thread_fn(void *arg)
                         }                     
                         
                     }
+                    if(cur_pc == 0x80133a84 || cur_pc == 0x80133ac4)
+	                {
+	                    printf("into kernel error addr:%x\n", handle_addr);
+	                    into_normal_execution = 0;
+	                    tcg_handle_addr = 1;
+	                    ask_addr = handle_addr;
+	                    exit_status = 0;
+	                    afl_wants_cpu_to_stop = 1;
+	                    handle_addr = 0;
+	                    ret = 0;
+	                    goto fail;   
+	                } 
                     TranslationBlock *tb = tb_find(cpu, last_tb, tb_exit); 
                     cpu_loop_exec_tb(cpu, tb, &last_tb, &tb_exit);
+                     //kernel mipsel 3.2.1 , mipseb 3.2.1
+
+	                /*
                     if(mem_mapping_exit)
                     {
                         target_ulong pgd = DECAF_getPGD(cpu);
@@ -3559,6 +3593,7 @@ void *qemu_handle_addr_thread_fn(void *arg)
                             goto fail;
                         }
                     }
+                    */
                     align_clocks(&sc, cpu);
                 }
             } 
@@ -3570,11 +3605,11 @@ label:
         t = env->tlb_table[mmu_idx][index].addend;
     }
     //printf("qemu_handle_addr_thread_fn access type:%d\n", access_type);
-    record_tlb_ind(index, access_type);
+    //record_tlb_ind(index, access_type);
     res_addr = qemu_ram_addr_from_host((uintptr_t)addr + t);
     return;
 fail:
-    res_addr = 0;
+    res_addr = 0xffffffff;
 }
 
 #elif defined(TARGET_ARM)

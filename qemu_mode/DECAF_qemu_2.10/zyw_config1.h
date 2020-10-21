@@ -19,7 +19,7 @@
 //if use new_mapping, cannot user pre_mapping
 
 //#define DEBUG
-////#define AUTO_FIND_FORK_PC //pc need change
+#define AUTO_FIND_FORK_PC //pc need change
 #define MAX_LEN 3000
 //#define LMBENCH
 #define STORE_PAGE_FUNC
