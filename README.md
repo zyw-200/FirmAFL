@@ -106,3 +106,12 @@ Use the run.sh in FirmAFL_config/9050/ instead.
 (3) Fork server crashed with signal 11
 
 Run scripts in start.py sequentially. First run "run.sh", when the testing program starts, run "python test.py", and "user.sh".
+
+(4) For the id "12978", "16116" firmware, since these firmware have more than 1 test case, so we use different image directory name to distinguish them.
+	
+	Before FirmAFL_setup, 
+	first, change image directory name image_12978 to image_129780, 
+	then modify the firmadyne/scratch/12978 to firmadyne/scratch/129780
+	After that, run python FirmAFL_setup.py 129780 mips
+	(If you want to test another case for image_12978, you can use image_129781 instead image_129780)
+
