@@ -8163,10 +8163,30 @@ abi_long do_syscall(void *cpu_env, int num, abi_long arg1,
             time_t host_time;
             if (get_user_sal(host_time, arg1))
                 goto efault;
+   #if defined(__GNU_LIBRARY__)
+      #if (__GLIBC__ >=2) && (__GLIBC_MINOR__ > 30)
+            struct timespec ts = {};
+            ts.tv_sec = host_time;
+            ret = get_errno(clock_settime(CLOCK_REALTIME, &ts));
+      #else
             ret = get_errno(stime(&host_time));
+      #endif
+   #else
+            ret = get_errno(stime(&host_time));
+   #endif
         }
         break;
 #endif
+/*#ifdef TARGET_NR_stime 
+    case TARGET_NR_stime:
+        {
+            time_t host_time;
+            if (get_user_sal(host_time, arg1))
+                goto efault;
+            ret = get_errno(stime(&host_time));
+        }
+        break;
+#endif */
     case TARGET_NR_ptrace:
         goto unimplemented;
 #ifdef TARGET_NR_alarm /* not on alpha */
