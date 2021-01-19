@@ -22,6 +22,12 @@ We design and implement FIRM-AFL, an enhancement of AFL for fuzzing IoT firmware
 
 <div align=center>Figure 2. Overview of FIRM-AFL</div>
 
+## Dependencies
+
+```
+sudo apt-get install -y libsdl1.2-dev zlib1g-dev libglib2.0-dev libbfd-dev build-essential binutils qemu libboost-dev git lib tool autoconf xorg-dev
+```
+
 
 ## Setup
 
