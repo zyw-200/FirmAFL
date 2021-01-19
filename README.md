@@ -55,6 +55,7 @@ Our system has two parts: system mode and user mode. We compile them separately 
 	cd firmadyne
 	python3 ./sources/extractor/extractor.py -b dlink -sql 127.0.0.1 -np -nk "../firmware/DIR-815_FIRMWARE_1.01.ZIP" images
 	./scripts/getArch.sh ./images/9050.tar.gz
+	python3 ./scripts/tar2db.py -i 2 -f ./images/2.tar.gz
 	./scripts/makeImage.sh 9050
 	./scripts/inferNetwork.sh 9050
 	cd ..
