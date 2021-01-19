@@ -11431,7 +11431,7 @@ abi_long do_syscall(void *cpu_env, int num, abi_long arg1,
 #endif
     case TARGET_NR_gettid:
         //ret = get_errno(gettid());
-        return get_errno(sys_gettid());
+        ret = get_errno(sys_gettid());
         break;
 #ifdef TARGET_NR_readahead
     case TARGET_NR_readahead:
