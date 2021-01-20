@@ -19,6 +19,7 @@ make $(nproc)
 popd
 
 ## Installing Firmadyne
+git clone --recursive https://github.com/firmadyne/firmadyne.git
 
 # Install additional deps
 sudo pip3 install git+https://github.com/ahupp/python-magic
@@ -36,13 +37,14 @@ pushd firmadyne
 ./download.sh
 
 git clone https://github.com/devttys0/sasquatch.git
-cd sasquatch
+pushd sasquatch
 ./build.sh
+popd 
+popd
 
 # Set FIRMWARE_DIR in firmadyne.config
 mv firmadyne.config firmadyne.config.orig
 echo -e '#!/bin/sh' "\nFIRMWARE_DIR=$(pwd)/" > firmadyne.config
 cat firmadyne.config.orig >> firmadyne.config
-popd
 
 cp firmadyne_modify/makeImage.sh firmadyne/scripts/
