@@ -22,6 +22,12 @@ We design and implement FIRM-AFL, an enhancement of AFL for fuzzing IoT firmware
 
 <div align=center>Figure 2. Overview of FIRM-AFL</div>
 
+## Dependencies
+
+```
+sudo apt-get install -y libsdl1.2-dev zlib1g-dev libglib2.0-dev binutils-dev build-essential binutils qemu libboost-dev git lib tool autoconf xorg-dev
+```
+
 
 ## Setup
 
@@ -47,36 +53,30 @@ Our system has two parts: system mode and user mode. We compile them separately 
 >Take DIR-815 router firmware as a example,
 	
 	cd firmadyne
-	./sources/extractor/extractor.py -b dlink -sql 127.0.0.1 -np -nk "../firmware/DIR-815_FIRMWARE_1.01.ZIP" images
+	python3 ./sources/extractor/extractor.py -b dlink -sql 127.0.0.1 -np -nk "../firmware/DIR-815_FIRMWARE_1.01.ZIP" images
 	./scripts/getArch.sh ./images/9050.tar.gz
+	python3 ./scripts/tar2db.py -i 9050 -f ./images/9050.tar.gz
 	./scripts/makeImage.sh 9050
 	./scripts/inferNetwork.sh 9050
 	cd ..
-	python FirmAFL_setup.py 9050 mipsel
+	python3 FirmAFL_setup.py 9050 mipsel
 
 4. modify the run.sh in image_9050 directory as following,  in order to emulate firmware with our modified QEMU and kernel, and running on the RAM file.
 >For mipsel,
 
-	ARCH=mipsel
-	QEMU="./qemu-system-${ARCH}"
-	KERNEL="./vmlinux.${ARCH}_3.2.1" 
-	IMAGE="./image.raw"
-	MEM_FILE="./mem_file"
-	${QEMU} -m 256 -mem-prealloc -mem-path ${MEM_FILE} -M ${QEMU_MACHINE} -kernel ${KERNEL} \ 
+	ARCHEND=mipsel
+	[...]
+	
 >For mipseb,
 
-	ARCH=mips
-	QEMU="./qemu-system-${ARCH}"
-	KERNEL="./vmlinux.${ARCH}_3.2.1" 
-	IMAGE="./image.raw"
-	MEM_FILE="./mem_file"
-	${QEMU} -m 256 -mem-prealloc -mem-path ${MEM_FILE} -M ${QEMU_MACHINE} -kernel ${KERNEL} \
+	ARCHEND=mipseb
+	[...]
 
 5. run the fuzzing process
 >after running the start.py script, FirmAFL will start the firmware emulation, and after the system initialization(120s), the fuzzing process will start. (Maybe you should use root privilege to run it.)
 
 	cd image_9050
-	python start.py 9050
+	python3 start.py 9050
 
 
 
